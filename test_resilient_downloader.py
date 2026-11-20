@@ -23,8 +23,8 @@ class TestResilientDownloader(unittest.TestCase):
         # 1.1 Bot detection & 403
         kind, msg = classify_error("HTTP Error 403: Forbidden: Sign in to confirm you're not a bot")
         self.assertEqual(kind, DownloadErrorKind.BOT_BLOCKED)
-        self.assertIn("YouTube Bot-Tekshiruvi", msg)
-        self.assertIn("YTDL_COOKIES", msg)
+        self.assertIn("YouTube Xizmati Vaqtincha Band", msg)
+        self.assertIn("403 Blok", msg)
 
         # 1.2 Timeout
         kind, msg = classify_error("Connection timed out after 15 seconds")
@@ -119,7 +119,7 @@ class TestResilientDownloader(unittest.TestCase):
 
         def ydl_side_effect(opts):
             strat_client = opts.get('extractor_args', {}).get('youtube', {}).get('player_client', [])
-            if strat_client == ['visionos', 'android', 'android_vr']:
+            if strat_client == ['visionos', 'tv_samsung']:
                 return first_ydl
             else:
                 with open(expected_mp4, "w") as f:

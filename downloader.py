@@ -64,10 +64,9 @@ def classify_error(err: Any) -> tuple[DownloadErrorKind, str]:
         "blocked by youtube",
     ]):
         msg = (
-            "🤖 <b>YouTube Bot-Tekshiruvi (403 Blok):</b>\n"
-            "YouTube Render bulut serveri IP manzilini vaqtincha chekladi.\n\n"
-            "💡 <b>Yechim:</b> Render Environment Variables bo'limiga "
-            "<code>YTDL_COOKIES_B64</code> yoki <code>YTDL_COOKIES</code> qo'shing."
+            "🤖 <b>YouTube Xizmati Vaqtincha Band:</b>\n"
+            "YouTube bulut serveri ushbu so'rovni vaqtincha chekladi (403 Blok).\n\n"
+            "💡 Iltimos, boshqa havola yuboring yoki birozdan so'ng qayta urinib ko'ring."
         )
         return DownloadErrorKind.BOT_BLOCKED, msg
 
@@ -203,7 +202,7 @@ def find_supported_url(text: str) -> Optional[str]:
 def _get_ytdl_common_opts(cookie_path: Optional[str] = None) -> dict:
     """
     yt-dlp umumiy sozlamalari (Render bulut muhiti va local uchun optimallashgan).
-    Xotira (RAM) tejash, socket timeout va retries bilan.
+    Xotira (RAM) tejash, Node.js EJS challenge solver, socket timeout va retries bilan.
     """
     opts = {
         'quiet': True,
@@ -217,12 +216,8 @@ def _get_ytdl_common_opts(cookie_path: Optional[str] = None) -> dict:
         'geo_bypass_country': 'US',
         'noplaylist': True,
         'playlist_items': '1',
-        'http_headers': {
-            'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_4_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4.1 Mobile/15E148 Safari/604.1',
-            'Accept-Language': 'en-US,en;q=0.9',
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-            'Sec-Fetch-Mode': 'navigate',
-        }
+        'js_runtimes': {'deno': {}, 'node': {}},
+        'remote_components': ['ejs:github'],
     }
     if cookie_path and os.path.exists(cookie_path):
         opts['cookiefile'] = cookie_path
@@ -501,7 +496,7 @@ def _sync_extract_info(url: str) -> Optional[Dict[str, Any]]:
 
         # YouTube uchun maxsus player_client strategiyalari (cookiesiz, avtomatik bot-bypass)
         client_attempts = (
-            [['visionos', 'android', 'android_vr'], ['android', 'android_vr']] if is_yt else [None]
+            [['visionos', 'tv_samsung'], ['tv_samsung'], ['visionos']] if is_yt else [None]
         )
 
         for client_group in client_attempts:
@@ -509,7 +504,6 @@ def _sync_extract_info(url: str) -> Optional[Dict[str, Any]]:
                 opts['extractor_args'] = {
                     'youtube': {
                         'player_client': client_group,
-                        'player_skip': ['webpage', 'configs'],
                     }
                 }
             try:
@@ -584,21 +578,20 @@ def _sync_download_video(url: str, output_template: str) -> Dict[str, Any]:
         if is_yt:
             strategies = [
                 {
-                    'name': 'yt_visionos_cloud',
+                    'name': 'yt_visionos_samsung_cloud',
                     'format': 'best[ext=mp4][height<=720][filesize<48M]/bestvideo[height<=720][filesize<45M][ext=mp4]+bestaudio[ext=m4a]/best[height<=480][filesize<48M]/18/best',
                     'extractor_args': {
                         'youtube': {
-                            'player_client': ['visionos', 'android', 'android_vr'],
-                            'player_skip': ['webpage', 'configs'],
+                            'player_client': ['visionos', 'tv_samsung'],
                         }
                     }
                 },
                 {
-                    'name': 'yt_android_fallback',
+                    'name': 'yt_samsung_tv_fallback',
                     'format': 'best[height<=720][filesize<48M]/best[height<=480][filesize<48M]/18/best',
                     'extractor_args': {
                         'youtube': {
-                            'player_client': ['android', 'android_vr'],
+                            'player_client': ['tv_samsung'],
                         }
                     }
                 },
@@ -728,21 +721,20 @@ def _sync_download_audio(url: str, output_template: str) -> Dict[str, Any]:
         if is_yt:
             audio_strategies = [
                 {
-                    'name': 'yt_audio_visionos',
+                    'name': 'yt_audio_visionos_samsung',
                     'format': 'bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio/best[height<=480]/18/best',
                     'extractor_args': {
                         'youtube': {
-                            'player_client': ['visionos', 'android', 'android_vr'],
-                            'player_skip': ['webpage', 'configs'],
+                            'player_client': ['visionos', 'tv_samsung'],
                         }
                     }
                 },
                 {
-                    'name': 'yt_audio_android_fallback',
+                    'name': 'yt_audio_samsung_fallback',
                     'format': 'bestaudio/best[height<=480]/18/best',
                     'extractor_args': {
                         'youtube': {
-                            'player_client': ['android', 'android_vr'],
+                            'player_client': ['tv_samsung'],
                         }
                     }
                 }
@@ -884,7 +876,7 @@ def _sync_search_music(query: str, limit: int = 4) -> list[Dict[str, Any]]:
             'skip_download': True,
             'extractor_args': {
                 'youtube': {
-                    'player_client': ['visionos', 'android', 'android_vr'],
+                    'player_client': ['visionos', 'tv_samsung'],
                 }
             }
         })
