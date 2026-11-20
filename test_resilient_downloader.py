@@ -119,7 +119,7 @@ class TestResilientDownloader(unittest.TestCase):
 
         def ydl_side_effect(opts):
             strat_client = opts.get('extractor_args', {}).get('youtube', {}).get('player_client', [])
-            if strat_client == ['ios', 'android']:
+            if strat_client == ['tv_embedded', 'android_creator', 'android']:
                 return first_ydl
             else:
                 with open(expected_mp4, "w") as f:

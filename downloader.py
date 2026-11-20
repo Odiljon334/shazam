@@ -466,9 +466,9 @@ def _sync_extract_info(url: str) -> Optional[Dict[str, Any]]:
         opts = _get_ytdl_common_opts(cookie_path=cookie_path)
         opts['extract_flat'] = False
 
-        # YouTube uchun maxsus player_client strategiyalari
+        # YouTube uchun maxsus player_client strategiyalari (cookiesiz, avtomatik bot-bypass)
         client_attempts = (
-            [['ios', 'android'], ['tv', 'mweb']] if is_yt else [None]
+            [['tv_embedded', 'android_creator', 'android'], ['android_vr', 'android']] if is_yt else [None]
         )
 
         for client_group in client_attempts:
@@ -547,25 +547,25 @@ def _sync_download_video(url: str, output_template: str) -> Dict[str, Any]:
             'max_filesize': MAX_TELEGRAM_SIZE,
         })
 
-        # YouTube uchun ketma-ket sinab ko'riladigan strategiyalar
+        # YouTube uchun ketma-ket sinab ko'riladigan strategiyalar (Zero-API / Zero-Cookie direct stream)
         if is_yt:
             strategies = [
                 {
-                    'name': 'yt_primary_cloud',
+                    'name': 'yt_tv_embedded_cloud',
                     'format': 'best[ext=mp4][height<=720][filesize<48M]/bestvideo[height<=720][filesize<45M][ext=mp4]+bestaudio[ext=m4a]/best[height<=480][filesize<48M]/18/best',
                     'extractor_args': {
                         'youtube': {
-                            'player_client': ['ios', 'android'],
+                            'player_client': ['tv_embedded', 'android_creator', 'android'],
                             'player_skip': ['webpage', 'configs'],
                         }
                     }
                 },
                 {
-                    'name': 'yt_tv_mweb_fallback',
+                    'name': 'yt_android_vr_fallback',
                     'format': 'best[height<=720][filesize<48M]/best[height<=480][filesize<48M]/18/best',
                     'extractor_args': {
                         'youtube': {
-                            'player_client': ['tv', 'mweb'],
+                            'player_client': ['android_vr', 'android'],
                         }
                     }
                 },
@@ -574,7 +574,7 @@ def _sync_download_video(url: str, output_template: str) -> Dict[str, Any]:
                     'format': '18/best',
                     'extractor_args': {
                         'youtube': {
-                            'player_client': ['android_creator', 'ios'],
+                            'player_client': ['android_creator', 'tv_embedded'],
                         }
                     }
                 }
@@ -695,21 +695,21 @@ def _sync_download_audio(url: str, output_template: str) -> Dict[str, Any]:
         if is_yt:
             audio_strategies = [
                 {
-                    'name': 'yt_audio_primary',
+                    'name': 'yt_audio_tv_embedded',
                     'format': 'bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio/best[height<=480]/18/best',
                     'extractor_args': {
                         'youtube': {
-                            'player_client': ['ios', 'android'],
+                            'player_client': ['tv_embedded', 'android_creator', 'android'],
                             'player_skip': ['webpage', 'configs'],
                         }
                     }
                 },
                 {
-                    'name': 'yt_audio_tv',
+                    'name': 'yt_audio_vr_fallback',
                     'format': 'bestaudio/best[height<=480]/18/best',
                     'extractor_args': {
                         'youtube': {
-                            'player_client': ['tv', 'mweb'],
+                            'player_client': ['android_vr', 'android'],
                         }
                     }
                 }
@@ -851,7 +851,7 @@ def _sync_search_music(query: str, limit: int = 4) -> list[Dict[str, Any]]:
             'skip_download': True,
             'extractor_args': {
                 'youtube': {
-                    'player_client': ['ios', 'android', 'mweb'],
+                    'player_client': ['tv_embedded', 'android_creator', 'android'],
                 }
             }
         })
