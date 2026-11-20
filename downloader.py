@@ -160,13 +160,44 @@ def log_download_error(event: str, url: str, exc: Exception, strategy: str = "de
         f"[DOWNLOAD_ERROR] event={event} domain={domain} strategy={strategy} kind={kind.value} error='{exc}' {details}".strip()
     )
 
+def normalize_youtube_url(url: str) -> str:
+    """
+    YouTube URLlarini tozalaydi va radio/mix pleylistlarni to'g'ridan-to'g'ri video URL ga aylantiradi.
+    Masalan:
+    https://youtube.com/playlist?list=RDSgLjmnHMqAE&playnext=1 -> https://www.youtube.com/watch?v=SgLjmnHMqAE
+    https://www.youtube.com/watch?v=SgLjmnHMqAE&list=RD... -> https://www.youtube.com/watch?v=SgLjmnHMqAE
+    """
+    if not url:
+        return url
+    lower_u = url.lower()
+    if "youtube.com" not in lower_u and "youtu.be" not in lower_u:
+        return url
+
+    # 1. list=RD<video_id> (YouTube Radio/Mix pleylist)
+    rd_match = re.search(r'[?&]list=RD([a-zA-Z0-9_-]{11})', url)
+    if rd_match:
+        return f"https://www.youtube.com/watch?v={rd_match.group(1)}"
+
+    # 2. v=<video_id> parametri bo'lsa
+    v_match = re.search(r'[?&]v=([a-zA-Z0-9_-]{11})', url)
+    if v_match:
+        return f"https://www.youtube.com/watch?v={v_match.group(1)}"
+
+    # 3. youtu.be/<video_id>
+    ytbe_match = re.search(r'youtu\.be/([a-zA-Z0-9_-]{11})', url)
+    if ytbe_match:
+        return f"https://www.youtube.com/watch?v={ytbe_match.group(1)}"
+
+    return url
+
 def find_supported_url(text: str) -> Optional[str]:
-    """Matn ichidan qo'llab-quvvatlanadigan URLni topadi."""
+    """Matn ichidan qo'llab-quvvatlanadigan URLni topadi va tozalaydi."""
     if not text:
         return None
     match = URL_REGEX.search(text.strip())
     if match:
-        return match.group(0).rstrip("?&")
+        raw_url = match.group(0).rstrip("?&")
+        return normalize_youtube_url(raw_url)
     return None
 
 def _get_ytdl_common_opts(cookie_path: Optional[str] = None) -> dict:
@@ -184,6 +215,8 @@ def _get_ytdl_common_opts(cookie_path: Optional[str] = None) -> dict:
         'fragment_retries': 3,
         'geo_bypass': True,
         'geo_bypass_country': 'US',
+        'noplaylist': True,
+        'playlist_items': '1',
         'http_headers': {
             'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_4_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4.1 Mobile/15E148 Safari/604.1',
             'Accept-Language': 'en-US,en;q=0.9',
@@ -468,7 +501,7 @@ def _sync_extract_info(url: str) -> Optional[Dict[str, Any]]:
 
         # YouTube uchun maxsus player_client strategiyalari (cookiesiz, avtomatik bot-bypass)
         client_attempts = (
-            [['tv_embedded', 'android_creator', 'android'], ['android_vr', 'android']] if is_yt else [None]
+            [['visionos', 'android', 'android_vr'], ['android', 'android_vr']] if is_yt else [None]
         )
 
         for client_group in client_attempts:
@@ -551,21 +584,21 @@ def _sync_download_video(url: str, output_template: str) -> Dict[str, Any]:
         if is_yt:
             strategies = [
                 {
-                    'name': 'yt_tv_embedded_cloud',
+                    'name': 'yt_visionos_cloud',
                     'format': 'best[ext=mp4][height<=720][filesize<48M]/bestvideo[height<=720][filesize<45M][ext=mp4]+bestaudio[ext=m4a]/best[height<=480][filesize<48M]/18/best',
                     'extractor_args': {
                         'youtube': {
-                            'player_client': ['tv_embedded', 'android_creator', 'android'],
+                            'player_client': ['visionos', 'android', 'android_vr'],
                             'player_skip': ['webpage', 'configs'],
                         }
                     }
                 },
                 {
-                    'name': 'yt_android_vr_fallback',
+                    'name': 'yt_android_fallback',
                     'format': 'best[height<=720][filesize<48M]/best[height<=480][filesize<48M]/18/best',
                     'extractor_args': {
                         'youtube': {
-                            'player_client': ['android_vr', 'android'],
+                            'player_client': ['android', 'android_vr'],
                         }
                     }
                 },
@@ -574,7 +607,7 @@ def _sync_download_video(url: str, output_template: str) -> Dict[str, Any]:
                     'format': '18/best',
                     'extractor_args': {
                         'youtube': {
-                            'player_client': ['android_creator', 'tv_embedded'],
+                            'player_client': ['visionos'],
                         }
                     }
                 }
@@ -695,21 +728,21 @@ def _sync_download_audio(url: str, output_template: str) -> Dict[str, Any]:
         if is_yt:
             audio_strategies = [
                 {
-                    'name': 'yt_audio_tv_embedded',
+                    'name': 'yt_audio_visionos',
                     'format': 'bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio/best[height<=480]/18/best',
                     'extractor_args': {
                         'youtube': {
-                            'player_client': ['tv_embedded', 'android_creator', 'android'],
+                            'player_client': ['visionos', 'android', 'android_vr'],
                             'player_skip': ['webpage', 'configs'],
                         }
                     }
                 },
                 {
-                    'name': 'yt_audio_vr_fallback',
+                    'name': 'yt_audio_android_fallback',
                     'format': 'bestaudio/best[height<=480]/18/best',
                     'extractor_args': {
                         'youtube': {
-                            'player_client': ['android_vr', 'android'],
+                            'player_client': ['android', 'android_vr'],
                         }
                     }
                 }
@@ -851,7 +884,7 @@ def _sync_search_music(query: str, limit: int = 4) -> list[Dict[str, Any]]:
             'skip_download': True,
             'extractor_args': {
                 'youtube': {
-                    'player_client': ['tv_embedded', 'android_creator', 'android'],
+                    'player_client': ['visionos', 'android', 'android_vr'],
                 }
             }
         })

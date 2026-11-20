@@ -26,6 +26,7 @@ async def run_tests():
         ("https://www.facebook.com/reel/123456789", True),
         ("Salom mana bu video https://www.youtube.com/watch?v=jNQXAC9IVRw juda zo'r", True),
         ("Oddiy matn havola yo'q", False),
+        ("https://youtube.com/playlist?list=RDSgLjmnHMqAE&playnext=1&si=-47LCwSmNxP6Z4ag", True),
         ("https://google.com/search?q=test", False),
     ]
     for text, should_find in test_urls:
