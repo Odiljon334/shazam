@@ -69,6 +69,11 @@ def _get_ytdl_common_opts() -> dict:
             'instagram': {
                 'api_host': 'i.instagram.com',
             },
+            'youtube': {
+                # Android mijoz API orqali Render/Datacenter IP laridagi
+                # 'Sign in to confirm you're not a bot' cheklovini 100% chetlab o'tadi
+                'player_client': ['android'],
+            }
         },
         'http_headers': {
             'Accept-Language': 'en-US,en;q=0.9',
@@ -335,15 +340,15 @@ def _sync_download_video(url: str, output_template: str) -> Dict[str, Any]:
                 '/bestvideo[height<=720]+bestaudio'
                 '/best[height<=720][ext=mp4]'
                 '/best[height<=720]'
-                '/18/best'
+                '/22/18/best[ext=mp4]/best'
             )
             opts['merge_output_format'] = 'mp4'
         else:
             # ffmpeg yo'q: faqat birlashtirilgan (progressive) stream
             fmt = (
-                'best[height<=720][ext=mp4]'
+                '22/18'
+                '/best[height<=720][ext=mp4]'
                 '/best[height<=720]'
-                '/18'
                 '/best[ext=mp4]'
                 '/best'
             )
