@@ -20,6 +20,11 @@ __pycache__/
 downloads/*
 !downloads/.gitkeep
 
+# Ma'lumotlar bazasi
+*.db
+*.sqlite
+*.sqlite3
+
 # Tizim va IDE fayllari
 .vscode/
 .idea/
