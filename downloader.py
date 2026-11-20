@@ -69,11 +69,6 @@ def _get_ytdl_common_opts() -> dict:
             'instagram': {
                 'api_host': 'i.instagram.com',
             },
-            'youtube': {
-                # web_creator — eng ishonchli, bot cheklovlarini chetlab o'tadi
-                # android fallback sifatida qoldiriladi
-                'player_client': ['web_creator', 'android', 'web'],
-            }
         },
         'http_headers': {
             'Accept-Language': 'en-US,en;q=0.9',
@@ -249,7 +244,9 @@ def _download_via_social_crawler(url: str, output_path: str) -> Optional[Dict[st
             logger.error(f"Crawler video yuklashda xatolik: {e}")
 
     # 2. Agar video bo'lmasa, Rasm yuklash (Pinterest, Instagram post, Facebook photo, Telegram)
-    if image_url:
+    # YouTube uchun hech qachon rasm/thumbnail qaytarilmaydi!
+    is_youtube = "youtube" in lower_url or "youtu.be" in lower_url
+    if image_url and not is_youtube:
         try:
             final_file = output_path.replace(".%(ext)s", ".jpg") if ".%(ext)s" in output_path else output_path
             if not final_file.lower().endswith(('.jpg', '.jpeg', '.png', '.webp')):

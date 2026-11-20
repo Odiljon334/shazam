@@ -27,7 +27,11 @@ def get_cookie_file() -> Optional[str]:
     Render.com yoki bulutli xizmatlarda INSTAGRAM_COOKIES env o'zgaruvchisi berilsa,
     uni avtomatik faylga aylantiradi.
     """
-    raw_cookies = os.getenv("INSTAGRAM_COOKIES") or os.getenv("COOKIES_CONTENT")
+    raw_cookies = (
+        os.getenv("YOUTUBE_COOKIES")
+        or os.getenv("INSTAGRAM_COOKIES")
+        or os.getenv("COOKIES_CONTENT")
+    )
     if raw_cookies and raw_cookies.strip():
         cookie_path = BASE_DIR / "cookies.txt"
         cookie_path.write_text(raw_cookies.strip(), encoding="utf-8")
