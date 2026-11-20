@@ -1,0 +1,26 @@
+# Xavfsizlik: Tokenlar va maxfiy ma'lumotlar hech qachon GitHubga chiqmasin!
+.env
+.env.local
+*cookie*
+*.cookies
+cookies.txt
+
+# Virtual muhit
+venv/
+ENV/
+env/
+
+# Python kesh fayllari
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Yuklab olingan vaqtinchalik media fayllar
+downloads/*
+!downloads/.gitkeep
+
+# Tizim va IDE fayllari
+.vscode/
+.idea/
+*.log

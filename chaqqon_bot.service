@@ -1,0 +1,16 @@
+[Unit]
+Description=Chaqqon Media Downloader Telegram Bot
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root/chaqqon_downloader_bot
+ExecStart=/root/chaqqon_downloader_bot/venv/bin/python3 /root/chaqqon_downloader_bot/bot.py
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
