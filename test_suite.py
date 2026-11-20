@@ -103,7 +103,18 @@ async def run_tests():
     print("  [OK] Rasm tozalandi.")
 
     print("\n========================================")
-    print("🎉 BARCHA AMALIY TESTLAR MUVAFFAQITYATLI O'TDI!")
+    print("▶️ 7. Resilient Architecture & YouTube Fallback Unit Testlari")
+    print("========================================")
+    import unittest
+    import test_resilient_downloader
+    suite = unittest.defaultTestLoader.loadTestsFromModule(test_resilient_downloader)
+    runner = unittest.TextTestRunner(verbosity=1)
+    result = runner.run(suite)
+    assert result.wasSuccessful(), f"Unit testlarda xatolik: {len(result.failures)} ta failure, {len(result.errors)} ta error"
+    print("  [OK] Barcha mock, fallback, error-classification va cookie testlari muvaffaqiyatli!")
+
+    print("\n========================================")
+    print("🎉 BARCHA AMALIY VA BIRLIK TESTLARI MUVAFFAQITYATLI O'TDI!")
     print("========================================")
 
 if __name__ == "__main__":

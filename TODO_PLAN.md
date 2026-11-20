@@ -1,34 +1,34 @@
-# TODO_PLAN: Universal Media Downloader & Emotsional Yangilanish
+# TODO_PLAN: YouTube Resilient Architecture on Render & Local
 
-Maqsad:
-1. Instagram (post, stories, reels), YouTube (video, shorts, audio), TikTok (suv belgisiz), Facebook (reels, rasm), Pinterest (rasm, video), Snapchat (rasm, video), Telegram (hikoya/post) qo'llab-quvvatlash.
-2. Rasm va video formatlarini avtomatik aniqlash (rasm bo'lsa rasm, video bo'lsa video, audio so'ralsa MP3).
-3. Bot xabarlariga to'liq jonli, emotsional, jalb qiluvchi va professional ruh berish.
-4. Render keep-alive (sleep mode) ni saqlash va test qilib GitHub ga push qilish.
+Goal: Fix YouTube video downloading when deployed on Render cloud environment (where datacenter IP bot detection / 403 blocks occur) while maintaining clean local behavior, zero resource leaks on Render free tier, and full backward compatibility.
 
 ---
 
 ## Bosqichlar:
 
-- [x] **1-bosqich: Platformalar va Media turlarini kengaytirish (`downloader.py`)**
-  - [x] `URL_REGEX` ga `snapchat.com` va `t.me` havolalarini qo'shish
-  - [x] Rasm va video formatlarini avtomatik ajratuvchi universal media yuklagich (`download_media`) yaratish
-  - [x] Pinterest, Facebook, Instagram rasmlarini to'g'ridan-to'g'ri yuklab olish
-  - [x] YouTube uchun Video va Audio (MP3) imkoniyatini ta'minlash
-  - [x] Telegram ochiq hikoya va postlaridan media ajratish (tg web preview)
+- [x] **1-bosqich: Cookie boshqaruvi va Render muhit konfiguratsiyasi (`config.py`)**
+  - [x] `YTDL_COOKIES_B64`, `YTDL_COOKIES`, `YOUTUBE_COOKIES_B64`, `YOUTUBE_COOKIES`, `INSTAGRAM_COOKIES` ni xavfsiz o'qish
+  - [x] Base64 dekodlash (padding va encoding xatolarisiz)
+  - [x] Xavfsiz vaqtinchalik cookie fayli (0600 permissions) yaratish va `finally` da avtomatik tozalash (`cookie_file_context`)
+  - [x] `.env.example` va `render.yaml` ga yangi cookie o'zgaruvchilarini hujjatlashtirish
 
-- [x] **2-bosqich: Emotsional va Chiroyli Matnlar & UX (`bot.py`)**
-  - [x] Start xabarini emotsional, samimiy va to'liq ro'yxat bilan yangilash
-  - [x] Yuklash jarayoni xabarlarini jonli qilish (Yuklanmoqda... Tayyorlanmoqda... Yuborilmoqda...)
-  - [x] Har bir media ostiga chiroyli emotsional tavsif va `[🎵 Musiqasini olish (MP3)]` tugmasi
-  - [x] Noto'g'ri yoki tushunarsiz xabarlarga jonli, yordam beruvchi javoblar
+- [x] **2-bosqich: Diagnostika, xatoliklarni tasniflash va Telegram xabarlari (`downloader.py`)**
+  - [x] `classify_error()`: Bot-detection/403, Timeout, Yosh chegarasi/Unavailable, Fayl hajmi limitlarini aniq ajratish
+  - [x] Har bir holat uchun tushunarli, yo'naltiruvchi Telegram xabarlari (`format_user_error`)
+  - [x] Har bir urinish va xatolik uchun strukturalangan loglar (`logger.info`, `logger.warning`, `logger.error`)
 
-- [x] **3-bosqich: Amaliy Testlar (Verification)**
-  - [x] Instagram (video/rasm) testi
-  - [x] YouTube (video/audio) testi
-  - [x] TikTok va Pinterest testi
-  - [x] Snapchat va Telegram havolalari testi
-  - [x] `test_suite.py` ni yangilab to'liq yurgizish (6/6 yashil)
+- [x] **3-bosqich: YouTube ko'p bosqichli Fallback va Bulut yt-dlp strategiyasi (`downloader.py`)**
+  - [x] Render 512MB RAM uchun mos formatlar (og'ir 1080p/4K o'rniga tezkor 720p/480p/360p pre-muxed format 18/22)
+  - [x] YouTube uchun ko'p pog'onali strategiya (Tier 1: `ios`/`android`, Tier 2: `tv`/`mweb`, Tier 3: format 18 fallback, Tier 4: secondary hook interface)
+  - [x] Audio uchun ham xuddi shunday YouTube fallback (to'g'ridan-to'g'ri audio -> tv audio -> video-to-mp3)
+  - [x] Tarmoq timeoutlari (`socket_timeout=15`, `retries=3`)
 
-- [x] **4-bosqich: GitHub ga Push va Renderga Chiqarish**
-  - [x] `bot.py`, `downloader.py`, `test_suite.py`, `TODO_PLAN.md` push qilindi (`c29857a`)
+- [x] **4-bosqich: Resurslar xavfsizligi va qat'iy tozalash (`bot.py` & `downloader.py`)**
+  - [x] Barcha oraliq fayllarni (`.part`, `.ytdl`, `.temp.*`, `_tempvid.*`) har qanday xatolikda `finally` blokida 100% tozalash
+  - [x] Telegram yuklashdan oldin va keyin qat'iy 50MB hajm nazorati
+  - [x] Bot darajasida asinxron timeout nazorati (`asyncio.wait_for`)
+
+- [x] **5-bosqich: Testlash va Verifikatsiya (Mock unit testlar + Real testlar)**
+  - [x] `test_resilient_downloader.py`: Success, YouTube 403 block + fallback, Cleanup on error, Timeout & Size guard unit testlari (6/6 passed)
+  - [x] Mavjud `test_suite.py` integratsion testlarini tekshirish (7/7 passed)
+  - [x] Sintaksis va lint tekshiruvlari (py_compile 100% clean)

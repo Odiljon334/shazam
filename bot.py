@@ -717,7 +717,10 @@ async def handle_incoming_text(message: Message):
 
     async with download_semaphore:
         try:
-            res = await downloader.download_video(url, out_tmpl)
+            res = await asyncio.wait_for(
+                downloader.download_video(url, out_tmpl),
+                timeout=config.DOWNLOAD_TIMEOUT_SECONDS
+            )
 
             if not res.get("success"):
                 err = res.get("error", "Noma'lum xatolik")
@@ -729,6 +732,13 @@ async def handle_incoming_text(message: Message):
                 return
 
             file_path = res["file_path"]
+            filesize = res.get("filesize", 0)
+            if filesize > config.MAX_FILE_SIZE_BYTES:
+                downloader.cleanup_file(file_path)
+                err = downloader.format_user_error(f"Fayl hajmi Telegram limitidan ({filesize // (1024*1024)}MB > 50MB) katta.")
+                await status_msg.edit_text(f"😔 {err}")
+                return
+
             title = res.get("title", "Media")
             uploader = res.get("uploader", "Noma'lum")
             media_type = res.get("media_type", "video")
@@ -777,13 +787,18 @@ async def handle_incoming_text(message: Message):
                 await status_msg.delete()
             except Exception:
                 pass
-
+        except asyncio.TimeoutError:
+            logger.warning(f"Download timeout ({config.DOWNLOAD_TIMEOUT_SECONDS}s) for URL: {url}")
+            err_msg = downloader.format_user_error("timed out")
+            await status_msg.edit_text(f"⏳ {err_msg}")
         except Exception as e:
             logger.error(f"Media yuborishda xatolik: {e}")
-            await status_msg.edit_text(f"❌ <b>Xatolik yuz berdi:</b> {str(e)[:150]}")
+            err_msg = downloader.format_user_error(str(e))
+            await status_msg.edit_text(f"❌ {err_msg}")
         finally:
             if "res" in locals() and isinstance(res, dict) and res.get("file_path"):
                 downloader.cleanup_file(res.get("file_path"))
+            downloader.cleanup_template_artifacts(out_tmpl)
 
 # ===========================================================================
 # AUDIO CALLBACK
@@ -817,7 +832,10 @@ async def on_download_audio_callback(callback: CallbackQuery):
 
     async with download_semaphore:
         try:
-            res = await downloader.download_audio(url, out_tmpl)
+            res = await asyncio.wait_for(
+                downloader.download_audio(url, out_tmpl),
+                timeout=config.DOWNLOAD_TIMEOUT_SECONDS
+            )
 
             if not res.get("success"):
                 err = res.get("error", "Noma'lum xatolik")
@@ -826,6 +844,13 @@ async def on_download_audio_callback(callback: CallbackQuery):
                 return
 
             file_path = res["file_path"]
+            filesize = res.get("filesize", 0)
+            if filesize > config.MAX_FILE_SIZE_BYTES:
+                downloader.cleanup_file(file_path)
+                err = downloader.format_user_error(f"Audio hajmi ({filesize // (1024*1024)}MB > 50MB) Telegram limitidan katta.")
+                await status_msg.edit_text(f"❌ {err}")
+                return
+
             title = res.get("title", "Musiqa")
             uploader_name = res.get("uploader", "Noma'lum")
 
@@ -855,13 +880,18 @@ async def on_download_audio_callback(callback: CallbackQuery):
                 await status_msg.delete()
             except Exception:
                 pass
-
+        except asyncio.TimeoutError:
+            logger.warning(f"Audio download timeout ({config.DOWNLOAD_TIMEOUT_SECONDS}s) for URL: {url}")
+            err_msg = downloader.format_user_error("timed out")
+            await status_msg.edit_text(f"⏳ {err_msg}")
         except Exception as e:
             logger.error(f"Audio yuborishda xatolik: {e}")
-            await status_msg.edit_text(f"❌ <b>Xatolik yuz berdi:</b> {str(e)[:150]}")
+            err_msg = downloader.format_user_error(str(e))
+            await status_msg.edit_text(f"❌ {err_msg}")
         finally:
             if "res" in locals() and isinstance(res, dict) and res.get("file_path"):
                 downloader.cleanup_file(res.get("file_path"))
+            downloader.cleanup_template_artifacts(out_tmpl)
 
 # ===========================================================================
 # WEB SERVER (Render.com healthcheck + keep-alive)

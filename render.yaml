@@ -11,3 +11,11 @@ services:
         value: downloads
       - key: MAX_FILE_SIZE_BYTES
         value: 52428800
+      - key: DOWNLOAD_TIMEOUT_SECONDS
+        value: 180
+      - key: YTDL_COOKIES_B64
+        sync: false
+      - key: YTDL_COOKIES
+        sync: false
+      - key: INSTAGRAM_COOKIES
+        sync: false
