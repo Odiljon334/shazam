@@ -495,14 +495,14 @@ def _sync_extract_info(url: str) -> Optional[Dict[str, Any]]:
         opts = _get_ytdl_common_opts(cookie_path=cookie_path)
         opts['extract_flat'] = False
 
-        # YouTube uchun maxsus player_client strategiyalari (cookiesiz, avtomatik bot-bypass)
+        # YouTube uchun maxsus player_client strategiyalari (Zero-cookie direct Android & Embedded bypass)
         client_attempts = (
-            [None, ['tv_samsung'], ['visionos']] if is_yt else [None]
+            [['android_embedded', 'android'], ['android'], ['tv_samsung']] if is_yt else [None]
         )
 
         for client_group in client_attempts:
             iter_opts = dict(opts)
-            if is_yt and (client_group is None or 'visionos' in client_group):
+            if is_yt:
                 iter_opts.pop('cookiefile', None)
             if client_group:
                 iter_opts['extractor_args'] = {
@@ -578,24 +578,35 @@ def _sync_download_video(url: str, output_template: str) -> Dict[str, Any]:
             'max_filesize': MAX_TELEGRAM_SIZE,
         })
 
-        # YouTube uchun ketma-ket sinab ko'riladigan strategiyalar (Cloud Datacenter + Home IP Resilient)
+        # YouTube uchun ketma-ket sinab ko'riladigan strategiyalar (Cloud Datacenter + Android Direct Bypass)
         if is_yt:
             yt_format = (
+                '18[filesize<48M]/'
                 'bestvideo[height<=720][filesize_approx<40M]+bestaudio[filesize_approx<8M]/'
                 'bestvideo[height<=480][filesize_approx<42M]+bestaudio[filesize_approx<6M]/'
                 'bestvideo[height<=360][filesize_approx<42M]+bestaudio[filesize_approx<6M]/'
                 'bestvideo[height<=240]+bestaudio[abr<=64]/'
-                'best[filesize<48M]/18/best'
+                'best[filesize<48M]'
             )
             strategies = [
                 {
-                    'name': 'yt_authenticated_cookies',
+                    'name': 'yt_android_embedded_adaptive',
                     'format': yt_format,
-                    'no_cookies': False,
+                    'extractor_args': {
+                        'youtube': {
+                            'player_client': ['android_embedded', 'android'],
+                        }
+                    },
+                    'no_cookies': True,
                 },
                 {
-                    'name': 'yt_zero_cookie_adaptive',
-                    'format': yt_format,
+                    'name': 'yt_android_direct',
+                    'format': '18[filesize<48M]/best[filesize<48M]/bestvideo[height<=240]+bestaudio[abr<=64]',
+                    'extractor_args': {
+                        'youtube': {
+                            'player_client': ['android'],
+                        }
+                    },
                     'no_cookies': True,
                 },
                 {
@@ -609,14 +620,9 @@ def _sync_download_video(url: str, output_template: str) -> Dict[str, Any]:
                     'no_cookies': True,
                 },
                 {
-                    'name': 'yt_visionos_direct',
+                    'name': 'yt_authenticated_cookies',
                     'format': yt_format,
-                    'extractor_args': {
-                        'youtube': {
-                            'player_client': ['visionos'],
-                        }
-                    },
-                    'no_cookies': True,
+                    'no_cookies': False,
                 }
             ]
         else:
@@ -738,8 +744,23 @@ def _sync_download_audio(url: str, output_template: str) -> Dict[str, Any]:
         if is_yt:
             audio_strategies = [
                 {
-                    'name': 'yt_audio_adaptive_cloud',
-                    'format': 'bestaudio[ext=m4a][filesize<48M]/bestaudio[ext=webm][filesize<48M]/bestaudio[filesize<48M]/18/best',
+                    'name': 'yt_audio_android_adaptive',
+                    'format': 'bestaudio[ext=m4a][filesize<48M]/bestaudio[ext=webm][filesize<48M]/bestaudio[filesize<48M]/140/139/18/best',
+                    'extractor_args': {
+                        'youtube': {
+                            'player_client': ['android_embedded', 'android'],
+                        }
+                    },
+                    'no_cookies': True,
+                },
+                {
+                    'name': 'yt_audio_android_direct',
+                    'format': '140/139/18[filesize<48M]/bestaudio[filesize<48M]/best[filesize<48M]',
+                    'extractor_args': {
+                        'youtube': {
+                            'player_client': ['android'],
+                        }
+                    },
                     'no_cookies': True,
                 },
                 {
