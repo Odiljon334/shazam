@@ -497,14 +497,14 @@ def _sync_extract_info(url: str) -> Optional[Dict[str, Any]]:
         opts = _get_ytdl_common_opts(cookie_path=cookie_path)
         opts['extract_flat'] = False
 
-        # YouTube uchun maxsus player_client strategiyalari (Node challenge solver + TV Samsung & VisionOS)
+        # YouTube uchun maxsus player_client strategiyalari (Mavjud auth cookies -> Node challenge TV/VisionOS -> Android)
         client_attempts = (
-            [['tv_samsung', 'visionos'], ['android'], ['tv_samsung']] if is_yt else [None]
+            [None, ['tv_samsung', 'visionos'], ['android']] if is_yt else [None]
         )
 
         for client_group in client_attempts:
             iter_opts = dict(opts)
-            if is_yt:
+            if is_yt and client_group is not None:
                 iter_opts.pop('cookiefile', None)
             if client_group:
                 iter_opts['extractor_args'] = {
@@ -580,17 +580,24 @@ def _sync_download_video(url: str, output_template: str) -> Dict[str, Any]:
             'max_filesize': MAX_TELEGRAM_SIZE,
         })
 
-        # YouTube uchun ketma-ket sinab ko'riladigan strategiyalar (Cloud TV/VisionOS + Android Direct)
+        # YouTube uchun ketma-ket sinab ko'riladigan strategiyalar (Authenticated Cookies -> Cloud TV/VisionOS -> Android)
         if is_yt:
             yt_format = (
-                'bestvideo[height<=720][filesize_approx<40M]+bestaudio[filesize_approx<8M]/'
-                'bestvideo[height<=480][filesize_approx<42M]+bestaudio[filesize_approx<6M]/'
-                'bestvideo[height<=360][filesize_approx<42M]+bestaudio[filesize_approx<6M]/'
-                'bestvideo[height<=240]+bestaudio[abr<=64]/'
-                '18[filesize<48M]/'
-                'best[filesize<48M]'
+                'bestvideo[height<=720][filesize<?42M]+bestaudio[filesize<?8M]/'
+                'bestvideo[height<=480][filesize<?42M]+bestaudio[filesize<?8M]/'
+                'bestvideo[height<=360][filesize<?42M]+bestaudio[filesize<?8M]/'
+                'bestvideo[height<=240]+bestaudio/'
+                '18[filesize<?48M]/'
+                'bestvideo[height<=360]+bestaudio/'
+                'bestvideo[height<=240]+bestaudio/'
+                '18/best'
             )
             strategies = [
+                {
+                    'name': 'yt_authenticated_cookies',
+                    'format': yt_format,
+                    'no_cookies': False,
+                },
                 {
                     'name': 'yt_tv_visionos_cloud',
                     'format': yt_format,
@@ -603,18 +610,13 @@ def _sync_download_video(url: str, output_template: str) -> Dict[str, Any]:
                 },
                 {
                     'name': 'yt_android_direct',
-                    'format': '18[filesize<48M]/best[filesize<48M]',
+                    'format': '18[filesize<?48M]/best[filesize<?48M]/18/best',
                     'extractor_args': {
                         'youtube': {
                             'player_client': ['android'],
                         }
                     },
                     'no_cookies': True,
-                },
-                {
-                    'name': 'yt_authenticated_cookies',
-                    'format': yt_format,
-                    'no_cookies': False,
                 }
             ]
         else:
@@ -734,10 +736,22 @@ def _sync_download_audio(url: str, output_template: str) -> Dict[str, Any]:
         })
 
         if is_yt:
+            yt_audio_format = (
+                'bestaudio[filesize<?48M]/'
+                'bestaudio[ext=m4a][filesize<?48M]/'
+                'bestaudio[ext=webm][filesize<?48M]/'
+                '140/139/251/250/18[filesize<?48M]/'
+                'bestaudio/18/best'
+            )
             audio_strategies = [
                 {
+                    'name': 'yt_audio_authenticated_cookies',
+                    'format': yt_audio_format,
+                    'no_cookies': False,
+                },
+                {
                     'name': 'yt_audio_tv_visionos',
-                    'format': 'bestaudio[filesize<48M]/bestaudio[ext=m4a][filesize<48M]/bestaudio[ext=webm][filesize<48M]/140/139/251/250/18[filesize<48M]/best[filesize<48M]',
+                    'format': yt_audio_format,
                     'extractor_args': {
                         'youtube': {
                             'player_client': ['tv_samsung', 'visionos'],
@@ -747,18 +761,13 @@ def _sync_download_audio(url: str, output_template: str) -> Dict[str, Any]:
                 },
                 {
                     'name': 'yt_audio_android_direct',
-                    'format': '140/139/18[filesize<48M]/bestaudio[filesize<48M]/best[filesize<48M]',
+                    'format': '140/139/18[filesize<?48M]/bestaudio[filesize<?48M]/best[filesize<?48M]/18/best',
                     'extractor_args': {
                         'youtube': {
                             'player_client': ['android'],
                         }
                     },
                     'no_cookies': True,
-                },
-                {
-                    'name': 'yt_audio_authenticated_cookies',
-                    'format': 'bestaudio[filesize<48M]/18/best',
-                    'no_cookies': False,
                 }
             ]
         else:
