@@ -951,6 +951,8 @@ async def on_download_audio_callback(callback: CallbackQuery):
 
 async def health_check_handler(request):
     stats = await database.get_stats()
+    import shutil
+    total, used, free = shutil.disk_usage("/")
     return web.json_response({
         "status": "online",
         "service": "Chaqqon Video Downloader Bot",
@@ -959,6 +961,11 @@ async def health_check_handler(request):
         "total_downloads": stats["total_downloads"],
         "maintenance": maintenance_mode,
         "verified_proxies": proxy_manager.get_verified_count(),
+        "disk": {
+            "total_gb": round(total / (1024**3), 2),
+            "free_gb": round(free / (1024**3), 2),
+            "used_gb": round(used / (1024**3), 2)
+        }
     })
 
 
