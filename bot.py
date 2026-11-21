@@ -911,20 +911,47 @@ async def health_check_handler(request):
 
 async def test_yt_handler(request):
     url = request.query.get("url", "https://www.youtube.com/watch?v=k5s6VYqudqc")
-    import traceback
+    import traceback, shutil
+    import yt_dlp
+    debug_info = {}
     try:
-        meta = await downloader.extract_info(url)
+        debug_info["node_path"] = shutil.which("node") or shutil.which("nodejs")
+        debug_info["ffmpeg_path"] = shutil.which("ffmpeg")
+        raw_c = config.get_raw_cookies_content()
+        debug_info["has_cookies"] = bool(raw_c)
+        debug_info["cookies_len"] = len(raw_c or "")
+
+        test_results = {}
+        for c_name, c_args in [("android", ["android"]), ("tv_visionos", ["tv_samsung", "visionos"]), ("ios", ["ios"])]:
+            node_bin = debug_info["node_path"] or "/usr/bin/node"
+            opts = {
+                'quiet': True,
+                'no_warnings': True,
+                'js_runtimes': {'node': {'path': node_bin}},
+                'remote_components': ['ejs:github'],
+                'extractor_args': {'youtube': {'player_client': c_args}},
+            }
+            try:
+                with yt_dlp.YoutubeDL(opts) as ydl:
+                    info = ydl.extract_info(url, download=False)
+                    fmts = [f.get('format_id') for f in info.get('formats', []) if not f.get('format_id', '').startswith('sb')]
+                    test_results[c_name] = {"success": True, "format_count": len(fmts), "sample_formats": fmts[:10]}
+            except Exception as ex:
+                test_results[c_name] = {"success": False, "error": str(ex)}
+        debug_info["clients_diag"] = test_results
+
         res = await downloader.download_video(url, "/tmp/debug_test.%(ext)s")
         return web.json_response({
             "status": "ok",
             "url": url,
-            "meta": meta,
+            "debug_info": debug_info,
             "download_result": res
         })
     except Exception as e:
         return web.json_response({
             "status": "error",
             "error": str(e),
+            "debug_info": debug_info,
             "traceback": traceback.format_exc()
         }, status=500)
 
