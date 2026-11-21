@@ -205,19 +205,21 @@ def _get_ytdl_common_opts(cookie_path: Optional[str] = None) -> dict:
     yt-dlp umumiy sozlamalari (Render bulut muhiti va local uchun optimallashgan).
     Xotira (RAM) tejash, Node.js EJS challenge solver, socket timeout va retries bilan.
     """
+    import shutil
+    node_bin = shutil.which('node') or shutil.which('nodejs') or '/usr/bin/node'
     opts = {
         'quiet': True,
         'no_warnings': True,
         'nocheckcertificate': True,
         'ignoreerrors': False,
-        'socket_timeout': 20,
+        'socket_timeout': 25,
         'retries': 3,
         'fragment_retries': 3,
         'geo_bypass': True,
         'geo_bypass_country': 'US',
         'noplaylist': True,
         'playlist_items': '1',
-        'js_runtimes': {'node': {}},
+        'js_runtimes': {'node': {'path': node_bin}},
         'remote_components': ['ejs:github'],
     }
     if cookie_path and os.path.exists(cookie_path):
@@ -495,9 +497,9 @@ def _sync_extract_info(url: str) -> Optional[Dict[str, Any]]:
         opts = _get_ytdl_common_opts(cookie_path=cookie_path)
         opts['extract_flat'] = False
 
-        # YouTube uchun maxsus player_client strategiyalari (Zero-cookie direct Android & Embedded bypass)
+        # YouTube uchun maxsus player_client strategiyalari (Node challenge solver + TV Samsung & VisionOS)
         client_attempts = (
-            [['android_embedded', 'android'], ['android'], ['tv_samsung']] if is_yt else [None]
+            [['tv_samsung', 'visionos'], ['android'], ['tv_samsung']] if is_yt else [None]
         )
 
         for client_group in client_attempts:
@@ -578,43 +580,33 @@ def _sync_download_video(url: str, output_template: str) -> Dict[str, Any]:
             'max_filesize': MAX_TELEGRAM_SIZE,
         })
 
-        # YouTube uchun ketma-ket sinab ko'riladigan strategiyalar (Cloud Datacenter + Android Direct Bypass)
+        # YouTube uchun ketma-ket sinab ko'riladigan strategiyalar (Cloud TV/VisionOS + Android Direct)
         if is_yt:
             yt_format = (
-                '18[filesize<48M]/'
                 'bestvideo[height<=720][filesize_approx<40M]+bestaudio[filesize_approx<8M]/'
                 'bestvideo[height<=480][filesize_approx<42M]+bestaudio[filesize_approx<6M]/'
                 'bestvideo[height<=360][filesize_approx<42M]+bestaudio[filesize_approx<6M]/'
                 'bestvideo[height<=240]+bestaudio[abr<=64]/'
+                '18[filesize<48M]/'
                 'best[filesize<48M]'
             )
             strategies = [
                 {
-                    'name': 'yt_android_embedded_adaptive',
+                    'name': 'yt_tv_visionos_cloud',
                     'format': yt_format,
                     'extractor_args': {
                         'youtube': {
-                            'player_client': ['android_embedded', 'android'],
+                            'player_client': ['tv_samsung', 'visionos'],
                         }
                     },
                     'no_cookies': True,
                 },
                 {
                     'name': 'yt_android_direct',
-                    'format': '18[filesize<48M]/best[filesize<48M]/bestvideo[height<=240]+bestaudio[abr<=64]',
+                    'format': '18[filesize<48M]/best[filesize<48M]',
                     'extractor_args': {
                         'youtube': {
                             'player_client': ['android'],
-                        }
-                    },
-                    'no_cookies': True,
-                },
-                {
-                    'name': 'yt_tv_samsung_cloud',
-                    'format': yt_format,
-                    'extractor_args': {
-                        'youtube': {
-                            'player_client': ['tv_samsung'],
                         }
                     },
                     'no_cookies': True,
@@ -744,11 +736,11 @@ def _sync_download_audio(url: str, output_template: str) -> Dict[str, Any]:
         if is_yt:
             audio_strategies = [
                 {
-                    'name': 'yt_audio_android_adaptive',
-                    'format': 'bestaudio[ext=m4a][filesize<48M]/bestaudio[ext=webm][filesize<48M]/bestaudio[filesize<48M]/140/139/18/best',
+                    'name': 'yt_audio_tv_visionos',
+                    'format': 'bestaudio[filesize<48M]/bestaudio[ext=m4a][filesize<48M]/bestaudio[ext=webm][filesize<48M]/140/139/251/250/18[filesize<48M]/best[filesize<48M]',
                     'extractor_args': {
                         'youtube': {
-                            'player_client': ['android_embedded', 'android'],
+                            'player_client': ['tv_samsung', 'visionos'],
                         }
                     },
                     'no_cookies': True,
@@ -759,16 +751,6 @@ def _sync_download_audio(url: str, output_template: str) -> Dict[str, Any]:
                     'extractor_args': {
                         'youtube': {
                             'player_client': ['android'],
-                        }
-                    },
-                    'no_cookies': True,
-                },
-                {
-                    'name': 'yt_audio_tv_samsung',
-                    'format': 'bestaudio[filesize<48M]/best[height<=480]/18/best',
-                    'extractor_args': {
-                        'youtube': {
-                            'player_client': ['tv_samsung'],
                         }
                     },
                     'no_cookies': True,
