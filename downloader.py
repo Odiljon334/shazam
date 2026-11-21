@@ -210,14 +210,14 @@ def _get_ytdl_common_opts(cookie_path: Optional[str] = None) -> dict:
         'no_warnings': True,
         'nocheckcertificate': True,
         'ignoreerrors': False,
-        'socket_timeout': 15,
+        'socket_timeout': 20,
         'retries': 3,
         'fragment_retries': 3,
         'geo_bypass': True,
         'geo_bypass_country': 'US',
         'noplaylist': True,
         'playlist_items': '1',
-        'js_runtimes': {'deno': {}, 'node': {}},
+        'js_runtimes': {'node': {}},
         'remote_components': ['ejs:github'],
     }
     if cookie_path and os.path.exists(cookie_path):
@@ -497,13 +497,12 @@ def _sync_extract_info(url: str) -> Optional[Dict[str, Any]]:
 
         # YouTube uchun maxsus player_client strategiyalari (cookiesiz, avtomatik bot-bypass)
         client_attempts = (
-            [['visionos'], ['visionos', 'tv_samsung'], ['tv_samsung']] if is_yt else [None]
+            [None, ['tv_samsung'], ['visionos']] if is_yt else [None]
         )
 
         for client_group in client_attempts:
             iter_opts = dict(opts)
-            if is_yt and client_group and 'visionos' in client_group:
-                # yt-dlp cookies mavjud bo'lsa visionos ni o'tkazib yuboradi. Zero-cookie direct bypass:
+            if is_yt and (client_group is None or 'visionos' in client_group):
                 iter_opts.pop('cookiefile', None)
             if client_group:
                 iter_opts['extractor_args'] = {
@@ -579,48 +578,45 @@ def _sync_download_video(url: str, output_template: str) -> Dict[str, Any]:
             'max_filesize': MAX_TELEGRAM_SIZE,
         })
 
-        # YouTube uchun ketma-ket sinab ko'riladigan strategiyalar (Zero-API / Zero-Cookie direct stream)
+        # YouTube uchun ketma-ket sinab ko'riladigan strategiyalar (Cloud Datacenter + Home IP Resilient)
         if is_yt:
+            yt_format = (
+                'bestvideo[height<=720][filesize_approx<40M]+bestaudio[filesize_approx<8M]/'
+                'bestvideo[height<=480][filesize_approx<42M]+bestaudio[filesize_approx<6M]/'
+                'bestvideo[height<=360][filesize_approx<42M]+bestaudio[filesize_approx<6M]/'
+                'bestvideo[height<=240]+bestaudio[abr<=64]/'
+                'best[filesize<48M]/18/best'
+            )
             strategies = [
                 {
-                    'name': 'yt_visionos_direct_nocookies',
-                    'format': 'best[ext=mp4][height<=720][filesize<48M]/bestvideo[height<=720][filesize<45M][ext=mp4]+bestaudio[ext=m4a]/best[height<=480][filesize<48M]/18/best',
-                    'extractor_args': {
-                        'youtube': {
-                            'player_client': ['visionos'],
-                        }
-                    },
+                    'name': 'yt_authenticated_cookies',
+                    'format': yt_format,
+                    'no_cookies': False,
+                },
+                {
+                    'name': 'yt_zero_cookie_adaptive',
+                    'format': yt_format,
                     'no_cookies': True,
                 },
                 {
-                    'name': 'yt_visionos_samsung_cloud',
-                    'format': 'best[ext=mp4][height<=720][filesize<48M]/bestvideo[height<=720][filesize<45M][ext=mp4]+bestaudio[ext=m4a]/best[height<=480][filesize<48M]/18/best',
-                    'extractor_args': {
-                        'youtube': {
-                            'player_client': ['visionos', 'tv_samsung'],
-                        }
-                    },
-                    'no_cookies': True,
-                },
-                {
-                    'name': 'yt_standalone_format18',
-                    'format': '18/best',
-                    'extractor_args': {
-                        'youtube': {
-                            'player_client': ['visionos'],
-                        }
-                    },
-                    'no_cookies': True,
-                },
-                {
-                    'name': 'yt_samsung_tv_fallback',
-                    'format': 'best[height<=720][filesize<48M]/best[height<=480][filesize<48M]/18/best',
+                    'name': 'yt_tv_samsung_cloud',
+                    'format': yt_format,
                     'extractor_args': {
                         'youtube': {
                             'player_client': ['tv_samsung'],
                         }
                     },
-                    'no_cookies': False,
+                    'no_cookies': True,
+                },
+                {
+                    'name': 'yt_visionos_direct',
+                    'format': yt_format,
+                    'extractor_args': {
+                        'youtube': {
+                            'player_client': ['visionos'],
+                        }
+                    },
+                    'no_cookies': True,
                 }
             ]
         else:
@@ -742,33 +738,23 @@ def _sync_download_audio(url: str, output_template: str) -> Dict[str, Any]:
         if is_yt:
             audio_strategies = [
                 {
-                    'name': 'yt_audio_visionos_nocookies',
-                    'format': 'bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio/best[height<=480]/18/best',
-                    'extractor_args': {
-                        'youtube': {
-                            'player_client': ['visionos'],
-                        }
-                    },
+                    'name': 'yt_audio_adaptive_cloud',
+                    'format': 'bestaudio[ext=m4a][filesize<48M]/bestaudio[ext=webm][filesize<48M]/bestaudio[filesize<48M]/18/best',
                     'no_cookies': True,
                 },
                 {
-                    'name': 'yt_audio_visionos_samsung',
-                    'format': 'bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio/best[height<=480]/18/best',
-                    'extractor_args': {
-                        'youtube': {
-                            'player_client': ['visionos', 'tv_samsung'],
-                        }
-                    },
-                    'no_cookies': True,
-                },
-                {
-                    'name': 'yt_audio_samsung_fallback',
-                    'format': 'bestaudio/best[height<=480]/18/best',
+                    'name': 'yt_audio_tv_samsung',
+                    'format': 'bestaudio[filesize<48M]/best[height<=480]/18/best',
                     'extractor_args': {
                         'youtube': {
                             'player_client': ['tv_samsung'],
                         }
                     },
+                    'no_cookies': True,
+                },
+                {
+                    'name': 'yt_audio_authenticated_cookies',
+                    'format': 'bestaudio[filesize<48M]/18/best',
                     'no_cookies': False,
                 }
             ]
