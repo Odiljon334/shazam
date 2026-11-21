@@ -1064,6 +1064,19 @@ async def proxy_diag_handler(request):
     })
 
 
+async def proxy_scrape_now_handler(request):
+    import time
+    t0 = time.time()
+    # Force fresh scrape by resetting last scrape time
+    proxy_manager._last_scrape_time = 0.0
+    proxies = proxy_manager.scrape_and_validate_proxies(max_needed=5, batch_size=50)
+    return web.json_response({
+        "time": round(time.time() - t0, 2),
+        "count": len(proxies),
+        "proxies": proxies
+    })
+
+
 async def test_yt_extract_handler(request):
     url = request.query.get("url", "https://www.youtube.com/watch?v=jNQXAC9IVRw")
     proxy = request.query.get("proxy")
@@ -1112,6 +1125,7 @@ def main():
     app.router.add_get("/", health_check_handler)
     app.router.add_get("/health", health_check_handler)
     app.router.add_get("/proxy-diag", proxy_diag_handler)
+    app.router.add_get("/proxy-scrape-now", proxy_scrape_now_handler)
     app.router.add_get("/test-yt-extract", test_yt_extract_handler)
     app.router.add_get("/test-yt", test_yt_handler)
     app.on_startup.append(on_app_startup)
