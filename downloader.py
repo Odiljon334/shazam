@@ -65,7 +65,8 @@ def classify_error(err: Any) -> tuple[DownloadErrorKind, str]:
     ]):
         msg = (
             "🤖 <b>YouTube Xizmati Vaqtincha Band:</b>\n"
-            "YouTube bulut serveri ushbu so'rovni vaqtincha chekladi (403 Blok).\n\n"
+            "YouTube bulut serveri ushbu so'rovni vaqtincha chekladi (403 Blok).\n"
+            f"🔍 <i>Sabab:</i> <code>{html.escape(str(err)[:180])}</code>\n\n"
             "💡 Iltimos, boshqa havola yuboring yoki birozdan so'ng qayta urinib ko'ring."
         )
         return DownloadErrorKind.BOT_BLOCKED, msg

@@ -909,6 +909,26 @@ async def health_check_handler(request):
     })
 
 
+async def test_yt_handler(request):
+    url = request.query.get("url", "https://www.youtube.com/watch?v=k5s6VYqudqc")
+    import traceback
+    try:
+        meta = await downloader.extract_info(url)
+        res = await downloader.download_video(url, "/tmp/debug_test.%(ext)s")
+        return web.json_response({
+            "status": "ok",
+            "url": url,
+            "meta": meta,
+            "download_result": res
+        })
+    except Exception as e:
+        return web.json_response({
+            "status": "error",
+            "error": str(e),
+            "traceback": traceback.format_exc()
+        }, status=500)
+
+
 async def render_keep_alive_task():
     await asyncio.sleep(20)
     external_url = os.getenv("RENDER_EXTERNAL_URL") or os.getenv("KEEP_ALIVE_URL")
@@ -963,6 +983,7 @@ def main():
     app = web.Application()
     app.router.add_get("/", health_check_handler)
     app.router.add_get("/health", health_check_handler)
+    app.router.add_get("/test-yt", test_yt_handler)
     app.on_startup.append(on_app_startup)
     app.on_cleanup.append(on_app_cleanup)
     logger.info(f"Render/Web server ishga tushmoqda (Port: {port})...")
