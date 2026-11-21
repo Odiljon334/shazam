@@ -496,18 +496,22 @@ def _sync_extract_info(url: str) -> Optional[Dict[str, Any]]:
 
         # YouTube uchun maxsus player_client strategiyalari (cookiesiz, avtomatik bot-bypass)
         client_attempts = (
-            [['visionos', 'tv_samsung'], ['tv_samsung'], ['visionos']] if is_yt else [None]
+            [['visionos'], ['visionos', 'tv_samsung'], ['tv_samsung']] if is_yt else [None]
         )
 
         for client_group in client_attempts:
+            iter_opts = dict(opts)
+            if is_yt and client_group and 'visionos' in client_group:
+                # yt-dlp cookies mavjud bo'lsa visionos ni o'tkazib yuboradi. Zero-cookie direct bypass:
+                iter_opts.pop('cookiefile', None)
             if client_group:
-                opts['extractor_args'] = {
+                iter_opts['extractor_args'] = {
                     'youtube': {
                         'player_client': client_group,
                     }
                 }
             try:
-                with yt_dlp.YoutubeDL(opts) as ydl:
+                with yt_dlp.YoutubeDL(iter_opts) as ydl:
                     info = ydl.extract_info(url, download=False)
                     if info:
                         return {
@@ -578,22 +582,24 @@ def _sync_download_video(url: str, output_template: str) -> Dict[str, Any]:
         if is_yt:
             strategies = [
                 {
+                    'name': 'yt_visionos_direct_nocookies',
+                    'format': 'best[ext=mp4][height<=720][filesize<48M]/bestvideo[height<=720][filesize<45M][ext=mp4]+bestaudio[ext=m4a]/best[height<=480][filesize<48M]/18/best',
+                    'extractor_args': {
+                        'youtube': {
+                            'player_client': ['visionos'],
+                        }
+                    },
+                    'no_cookies': True,
+                },
+                {
                     'name': 'yt_visionos_samsung_cloud',
                     'format': 'best[ext=mp4][height<=720][filesize<48M]/bestvideo[height<=720][filesize<45M][ext=mp4]+bestaudio[ext=m4a]/best[height<=480][filesize<48M]/18/best',
                     'extractor_args': {
                         'youtube': {
                             'player_client': ['visionos', 'tv_samsung'],
                         }
-                    }
-                },
-                {
-                    'name': 'yt_samsung_tv_fallback',
-                    'format': 'best[height<=720][filesize<48M]/best[height<=480][filesize<48M]/18/best',
-                    'extractor_args': {
-                        'youtube': {
-                            'player_client': ['tv_samsung'],
-                        }
-                    }
+                    },
+                    'no_cookies': True,
                 },
                 {
                     'name': 'yt_standalone_format18',
@@ -602,7 +608,18 @@ def _sync_download_video(url: str, output_template: str) -> Dict[str, Any]:
                         'youtube': {
                             'player_client': ['visionos'],
                         }
-                    }
+                    },
+                    'no_cookies': True,
+                },
+                {
+                    'name': 'yt_samsung_tv_fallback',
+                    'format': 'best[height<=720][filesize<48M]/best[height<=480][filesize<48M]/18/best',
+                    'extractor_args': {
+                        'youtube': {
+                            'player_client': ['tv_samsung'],
+                        }
+                    },
+                    'no_cookies': False,
                 }
             ]
         else:
@@ -612,12 +629,15 @@ def _sync_download_video(url: str, output_template: str) -> Dict[str, Any]:
                     'format': 'bestvideo[filesize<48M][ext=mp4]+bestaudio[ext=m4a]/best[filesize<48M][ext=mp4]/best[filesize<48M]/bestvideo[filesize_approx<48M]+bestaudio/18/best',
                     'extractor_args': {
                         'instagram': {'api_host': 'i.instagram.com'},
-                    }
+                    },
+                    'no_cookies': False,
                 }
             ]
 
         for strat in strategies:
             strat_opts = dict(base_opts)
+            if strat.get('no_cookies'):
+                strat_opts.pop('cookiefile', None)
             strat_opts['format'] = strat['format']
             if 'extractor_args' in strat:
                 strat_opts['extractor_args'] = strat['extractor_args']
@@ -721,13 +741,24 @@ def _sync_download_audio(url: str, output_template: str) -> Dict[str, Any]:
         if is_yt:
             audio_strategies = [
                 {
+                    'name': 'yt_audio_visionos_nocookies',
+                    'format': 'bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio/best[height<=480]/18/best',
+                    'extractor_args': {
+                        'youtube': {
+                            'player_client': ['visionos'],
+                        }
+                    },
+                    'no_cookies': True,
+                },
+                {
                     'name': 'yt_audio_visionos_samsung',
                     'format': 'bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio/best[height<=480]/18/best',
                     'extractor_args': {
                         'youtube': {
                             'player_client': ['visionos', 'tv_samsung'],
                         }
-                    }
+                    },
+                    'no_cookies': True,
                 },
                 {
                     'name': 'yt_audio_samsung_fallback',
@@ -736,7 +767,8 @@ def _sync_download_audio(url: str, output_template: str) -> Dict[str, Any]:
                         'youtube': {
                             'player_client': ['tv_samsung'],
                         }
-                    }
+                    },
+                    'no_cookies': False,
                 }
             ]
         else:
@@ -744,12 +776,15 @@ def _sync_download_audio(url: str, output_template: str) -> Dict[str, Any]:
                 {
                     'name': 'general_audio',
                     'format': 'bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio/best[height<=480]/18/best',
-                    'extractor_args': {}
+                    'extractor_args': {},
+                    'no_cookies': False,
                 }
             ]
 
         for strat in audio_strategies:
             strat_opts = dict(base_opts)
+            if strat.get('no_cookies'):
+                strat_opts.pop('cookiefile', None)
             strat_opts['format'] = strat['format']
             if strat.get('extractor_args'):
                 strat_opts['extractor_args'] = strat['extractor_args']
