@@ -26,6 +26,7 @@ import config
 import downloader
 import database
 import mtproto_uploader
+import proxy_manager
 
 # ---------------------------------------------------------------------------
 # Logging
@@ -957,7 +958,27 @@ async def health_check_handler(request):
         "total_users": stats["total_users"],
         "total_downloads": stats["total_downloads"],
         "maintenance": maintenance_mode,
+        "verified_proxies": proxy_manager.get_verified_count(),
     })
+
+
+async def proxy_refresher_task():
+    logger.info("Proxy pool warm-up boshlanmoqda...")
+    loop = asyncio.get_running_loop()
+    try:
+        await loop.run_in_executor(None, proxy_manager.scrape_and_validate_proxies, 6, 40)
+        logger.info(f"Proxy pool tayyor: {proxy_manager.get_verified_count()} ta ishlaydigan HTTPS proxy.")
+    except Exception as e:
+        logger.warning(f"Dastlabki proxy warm-up xatosi: {e}")
+
+    while True:
+        try:
+            await asyncio.sleep(600)
+            await loop.run_in_executor(None, proxy_manager.scrape_and_validate_proxies, 6, 40)
+        except asyncio.CancelledError:
+            break
+        except Exception as e:
+            logger.warning(f"Davriy proxy yangilashda xatolik: {e}")
 
 
 async def test_yt_handler(request):
@@ -1035,6 +1056,7 @@ async def on_app_startup(app):
     await database.init_db()
     logger.info("✅ Ma'lumotlar bazasi tayyor.")
     app["keep_alive_task"] = asyncio.create_task(render_keep_alive_task())
+    app["proxy_task"] = asyncio.create_task(proxy_refresher_task())
 
     if not config.BOT_TOKEN:
         logger.warning("DIQQAT: BOT_TOKEN yo'q! Faqat healthcheck rejimi.")
@@ -1049,7 +1071,7 @@ async def on_app_startup(app):
 
 
 async def on_app_cleanup(app):
-    for key in ("keep_alive_task", "bot_task"):
+    for key in ("keep_alive_task", "bot_task", "proxy_task"):
         if key in app:
             app[key].cancel()
             try:

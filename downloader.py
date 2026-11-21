@@ -213,11 +213,12 @@ def _get_ytdl_common_opts(cookie_path: Optional[str] = None) -> dict:
         'no_warnings': True,
         'nocheckcertificate': True,
         'ignoreerrors': False,
-        'socket_timeout': 25,
-        'retries': 3,
-        'fragment_retries': 3,
+        'socket_timeout': 15,
+        'retries': 2,
+        'fragment_retries': 2,
         'geo_bypass': True,
         'geo_bypass_country': 'US',
+        'source_address': '0.0.0.0',
         'noplaylist': True,
         'playlist_items': '1',
         'js_runtimes': {'node': {'path': node_bin}},
@@ -590,20 +591,14 @@ def _sync_download_video(url: str, output_template: str) -> Dict[str, Any]:
         if is_yt:
             # 2GB gacha yuqori sifatli yuklash (1080p -> 720p -> 480p -> 360p)
             yt_format = (
-                'bestvideo[ext=mp4][height<=1080]+bestaudio[ext=m4a]/'
                 'bestvideo[height<=1080]+bestaudio/'
+                'best[height<=1080]/'
                 'bestvideo[height<=720]+bestaudio/'
-                'bestvideo[height<=480]+bestaudio/'
-                'bestvideo[height<=360]+bestaudio/'
-                '18/best'
+                'best[height<=720]/'
+                'bestvideo+bestaudio/'
+                'best'
             )
             strategies = [
-                {
-                    'name': 'yt_authenticated_cookies',
-                    'format': yt_format,
-                    'no_cookies': False,
-                    'use_proxy': False,
-                },
                 {
                     'name': 'yt_proxy_rotating_cloud',
                     'format': yt_format,
@@ -627,8 +622,14 @@ def _sync_download_video(url: str, output_template: str) -> Dict[str, Any]:
                     'use_proxy': False,
                 },
                 {
+                    'name': 'yt_authenticated_cookies',
+                    'format': yt_format,
+                    'no_cookies': False,
+                    'use_proxy': False,
+                },
+                {
                     'name': 'yt_android_direct',
-                    'format': '18/best',
+                    'format': 'bestvideo+bestaudio/best',
                     'extractor_args': {
                         'youtube': {
                             'player_client': ['android'],
@@ -765,15 +766,9 @@ def _sync_download_audio(url: str, output_template: str) -> Dict[str, Any]:
 
         if is_yt:
             yt_audio_format = (
-                'bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio/140/139/251/250/18/best'
+                'bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio/140/139/251/250/best'
             )
             audio_strategies = [
-                {
-                    'name': 'yt_audio_authenticated_cookies',
-                    'format': yt_audio_format,
-                    'no_cookies': False,
-                    'use_proxy': False,
-                },
                 {
                     'name': 'yt_audio_proxy_rotating',
                     'format': yt_audio_format,
@@ -797,8 +792,14 @@ def _sync_download_audio(url: str, output_template: str) -> Dict[str, Any]:
                     'use_proxy': False,
                 },
                 {
+                    'name': 'yt_audio_authenticated_cookies',
+                    'format': yt_audio_format,
+                    'no_cookies': False,
+                    'use_proxy': False,
+                },
+                {
                     'name': 'yt_audio_android_direct',
-                    'format': '140/139/18/bestaudio/best',
+                    'format': '140/139/bestaudio/best',
                     'extractor_args': {
                         'youtube': {
                             'player_client': ['android'],

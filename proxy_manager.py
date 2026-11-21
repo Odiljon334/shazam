@@ -16,14 +16,15 @@ from typing import Optional, List, Set
 logger = logging.getLogger("chaqqon_bot.proxy_manager")
 
 PROXY_SOURCES = [
-    "https://raw.githubusercontent.com/monosans/proxy-list/main/proxies/http.txt",
-    "https://raw.githubusercontent.com/TheSpeedX/SOCKS-List/master/http.txt",
+    "https://cdn.jsdelivr.net/gh/officialputuid/KangProxy@main/https/https.txt",
+    "https://raw.githubusercontent.com/komutan234/Proxy-List-Free/main/proxies/http.txt",
     "https://raw.githubusercontent.com/roosterkid/openproxylist/main/HTTPS_RAW.txt",
-    "https://api.proxyscrape.com/v2/?request=displayproxies&protocol=http&timeout=4000&country=all&ssl=yes&anonymity=all",
+    "https://raw.githubusercontent.com/monosans/proxy-list/main/proxies/http.txt",
+    "https://api.proxyscrape.com/v2/?request=displayproxies&protocol=http&timeout=3500&country=all&ssl=yes&anonymity=all",
 ]
 
-CHECK_URL = "http://www.google.com/generate_204"
-CACHE_TTL = 900  # 15 daqiqa kesh
+CHECK_URL = "https://www.google.com/generate_204"
+CACHE_TTL = 600  # 10 daqiqa kesh
 
 _verified_proxies: List[str] = []
 _last_scrape_time: float = 0.0
@@ -43,7 +44,7 @@ def get_static_proxy() -> Optional[str]:
 
 
 def _check_single_proxy(proxy_str: str, timeout: float = 3.0) -> Optional[str]:
-    """Bitta proksini Google/YouTube ping orqali tekshirish."""
+    """Bitta proksini Google/YouTube HTTPS SSL CONNECT orqali tekshirish."""
     clean_proxy = proxy_str.strip()
     if not clean_proxy.startswith("http"):
         clean_proxy = f"http://{clean_proxy}"
@@ -72,7 +73,7 @@ def scrape_and_validate_proxies(max_needed: int = 10, batch_size: int = 40) -> L
     if _verified_proxies and (now - _last_scrape_time < CACHE_TTL):
         return _verified_proxies
 
-    logger.info("Proxy Scraper: Yangi proksilar qidirilmoqda...")
+    logger.info("Proxy Scraper: Yangi HTTPS proksilar qidirilmoqda...")
     raw_candidates: Set[str] = set()
 
     for src in PROXY_SOURCES:
@@ -99,14 +100,18 @@ def scrape_and_validate_proxies(max_needed: int = 10, batch_size: int = 40) -> L
 
     valid_proxies = []
     with concurrent.futures.ThreadPoolExecutor(max_workers=15) as executor:
-        results = executor.map(_check_single_proxy, test_batch)
-        for res in results:
-            if res:
-                valid_proxies.append(res)
-                if len(valid_proxies) >= max_needed:
-                    break
+        futures = {executor.submit(_check_single_proxy, p, 3.0): p for p in test_batch}
+        for future in concurrent.futures.as_completed(futures):
+            try:
+                res = future.result()
+                if res:
+                    valid_proxies.append(res)
+                    if len(valid_proxies) >= max_needed:
+                        break
+            except Exception:
+                pass
 
-    logger.info(f"Proxy Scraper: {len(test_batch)} tadan {len(valid_proxies)} ta ishlaydigan proxy topildi.")
+    logger.info(f"Proxy Scraper: {len(test_batch)} tadan {len(valid_proxies)} ta ishlaydigan HTTPS proxy topildi.")
     _verified_proxies = valid_proxies
     _last_scrape_time = now
     return _verified_proxies
@@ -122,6 +127,10 @@ def get_working_proxy() -> Optional[str]:
     if proxies:
         return random.choice(proxies)
     return None
+
+
+def get_verified_count() -> int:
+    return len(_verified_proxies)
 
 
 def report_proxy_failure(proxy_url: Optional[str]) -> None:
