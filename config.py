@@ -15,8 +15,12 @@ BOT_TOKEN = os.getenv("BOT_TOKEN", "").strip()
 DOWNLOAD_DIR = BASE_DIR / os.getenv("DOWNLOAD_DIR", "downloads")
 DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
-# 50MB Telegram limiti
-MAX_FILE_SIZE_BYTES = int(os.getenv("MAX_FILE_SIZE_BYTES", 50 * 1024 * 1024))
+# Telegram MTProto hisob ma'lumotlari (2GB gacha katta hajmdagi fayllarni yuborish uchun)
+API_ID = int(os.getenv("API_ID", "30119925"))
+API_HASH = os.getenv("API_HASH", "001544be488fb4306ffce5c4b8371445").strip()
+
+# 2000MB (2GB) Telegram MTProto limiti (standart 50MB HTTP Bot API limiti o'rniga)
+MAX_FILE_SIZE_BYTES = int(os.getenv("MAX_FILE_SIZE_BYTES", 2000 * 1024 * 1024))
 
 # Celeron va HDD uchun qat'iy parallel yuklash chegarasi (max 2)
 MAX_CONCURRENT_DOWNLOADS = 2

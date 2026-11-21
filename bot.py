@@ -25,6 +25,7 @@ from aiogram.enums import ParseMode
 import config
 import downloader
 import database
+import mtproto_uploader
 
 # ---------------------------------------------------------------------------
 # Logging
@@ -774,14 +775,41 @@ async def handle_incoming_text(message: Message):
                     f"✨ <i>Siz uchun eng a'lo sifatda yuklab berildi! Maroq bilan tomosha qiling!</i> 🍿\n"
                     f"⚡️ <b>@chaqqon_robot</b>"
                 )
-                await message.answer_video(
-                    video=FSInputFile(file_path),
-                    caption=caption,
-                    width=res.get("width"),
-                    height=res.get("height"),
-                    duration=res.get("duration"),
-                    reply_markup=music_btn,
-                )
+
+                filesize = res.get("filesize") or (os.path.getsize(file_path) if os.path.exists(file_path) else 0)
+                if filesize > 50 * 1024 * 1024:
+                    logger.info(f"Fayl hajmi ({filesize // (1024*1024)}MB) 50MB dan katta. MTProto orqali yuborilmoqda...")
+                    await mtproto_uploader.send_large_video(
+                        chat_id=message.chat.id,
+                        file_path=file_path,
+                        caption=caption,
+                        width=res.get("width"),
+                        height=res.get("height"),
+                        duration=res.get("duration"),
+                    )
+                else:
+                    try:
+                        await message.answer_video(
+                            video=FSInputFile(file_path),
+                            caption=caption,
+                            width=res.get("width"),
+                            height=res.get("height"),
+                            duration=res.get("duration"),
+                            reply_markup=music_btn,
+                        )
+                    except Exception as send_err:
+                        if "too large" in str(send_err).lower() or "413" in str(send_err):
+                            logger.info("Bot API 413 xatosi berdi. MTProto orqali yuborilmoqda...")
+                            await mtproto_uploader.send_large_video(
+                                chat_id=message.chat.id,
+                                file_path=file_path,
+                                caption=caption,
+                                width=res.get("width"),
+                                height=res.get("height"),
+                                duration=res.get("duration"),
+                            )
+                        else:
+                            raise send_err
 
             try:
                 await status_msg.delete()
@@ -844,10 +872,10 @@ async def on_download_audio_callback(callback: CallbackQuery):
                 return
 
             file_path = res["file_path"]
-            filesize = res.get("filesize", 0)
+            filesize = res.get("filesize", 0) or (os.path.getsize(file_path) if os.path.exists(file_path) else 0)
             if filesize > config.MAX_FILE_SIZE_BYTES:
                 downloader.cleanup_file(file_path)
-                err = downloader.format_user_error(f"Audio hajmi ({filesize // (1024*1024)}MB > 50MB) Telegram limitidan katta.")
+                err = downloader.format_user_error(f"Audio hajmi ({filesize // (1024*1024)}MB > {config.MAX_FILE_SIZE_BYTES // (1024*1024)}MB) Telegram limitidan katta.")
                 await status_msg.edit_text(f"❌ {err}")
                 return
 
@@ -864,17 +892,40 @@ async def on_download_audio_callback(callback: CallbackQuery):
                 f"⚡️ <b>@chaqqon_robot</b>"
             )
 
-            audio_input = FSInputFile(file_path)
-            if file_path.lower().endswith(".mp3"):
-                await callback.message.answer_audio(
-                    audio=audio_input,
+            if filesize > 50 * 1024 * 1024:
+                logger.info(f"Audio fayl hajmi ({filesize // (1024*1024)}MB) 50MB dan katta. MTProto orqali yuborilmoqda...")
+                await mtproto_uploader.send_large_audio(
+                    chat_id=callback.message.chat.id,
+                    file_path=file_path,
                     title=title,
                     performer=uploader_name,
                     duration=res.get("duration"),
-                    caption=caption,
                 )
             else:
-                await callback.message.answer_document(document=audio_input, caption=caption)
+                audio_input = FSInputFile(file_path)
+                try:
+                    if file_path.lower().endswith(".mp3"):
+                        await callback.message.answer_audio(
+                            audio=audio_input,
+                            title=title,
+                            performer=uploader_name,
+                            duration=res.get("duration"),
+                            caption=caption,
+                        )
+                    else:
+                        await callback.message.answer_document(document=audio_input, caption=caption)
+                except Exception as send_err:
+                    if "too large" in str(send_err).lower() or "413" in str(send_err):
+                        logger.info("Audio yuborishda 413 xatosi. MTProto orqali yuborilmoqda...")
+                        await mtproto_uploader.send_large_audio(
+                            chat_id=callback.message.chat.id,
+                            file_path=file_path,
+                            title=title,
+                            performer=uploader_name,
+                            duration=res.get("duration"),
+                        )
+                    else:
+                        raise send_err
 
             try:
                 await status_msg.delete()
@@ -941,11 +992,15 @@ async def test_yt_handler(request):
         debug_info["clients_diag"] = test_results
 
         res = await downloader.download_video(url, "/tmp/debug_test.%(ext)s")
+        file_p = res.get("file_path")
+        if file_p:
+            downloader.cleanup_file(file_p)
+        downloader.cleanup_template_artifacts("/tmp/debug_test.%(ext)s")
         return web.json_response({
             "status": "ok",
             "url": url,
             "debug_info": debug_info,
-            "download_result": res
+            "download_result": {k: v for k, v in res.items() if k != "file_path"}
         })
     except Exception as e:
         return web.json_response({

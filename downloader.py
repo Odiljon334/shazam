@@ -11,6 +11,7 @@ from typing import Optional, Dict, Any, List, Protocol
 from pathlib import Path
 import yt_dlp
 import config
+import proxy_manager
 
 logger = logging.getLogger(__name__)
 
@@ -512,6 +513,9 @@ def _sync_extract_info(url: str) -> Optional[Dict[str, Any]]:
                         'player_client': client_group,
                     }
                 }
+            active_proxy = proxy_manager.get_working_proxy() if is_yt else None
+            if active_proxy:
+                iter_opts['proxy'] = active_proxy
             try:
                 with yt_dlp.YoutubeDL(iter_opts) as ydl:
                     info = ydl.extract_info(url, download=False)
@@ -524,6 +528,8 @@ def _sync_extract_info(url: str) -> Optional[Dict[str, Any]]:
                             'description': (info.get('description') or '')[:200],
                         }
             except Exception as e:
+                if active_proxy:
+                    proxy_manager.report_proxy_failure(active_proxy)
                 log_download_error("extract_info_attempt", url, e, strategy=str(client_group))
                 continue
 
@@ -580,16 +586,15 @@ def _sync_download_video(url: str, output_template: str) -> Dict[str, Any]:
             'max_filesize': MAX_TELEGRAM_SIZE,
         })
 
-        # YouTube uchun ketma-ket sinab ko'riladigan strategiyalar (Authenticated Cookies -> Cloud TV/VisionOS -> Android)
+        # YouTube uchun ketma-ket sinab ko'riladigan strategiyalar (Proxy + Cookies + TV/VisionOS)
         if is_yt:
+            # 2GB gacha yuqori sifatli yuklash (1080p -> 720p -> 480p -> 360p)
             yt_format = (
-                'bestvideo[height<=720][filesize<?42M]+bestaudio[filesize<?8M]/'
-                'bestvideo[height<=480][filesize<?42M]+bestaudio[filesize<?8M]/'
-                'bestvideo[height<=360][filesize<?42M]+bestaudio[filesize<?8M]/'
-                'bestvideo[height<=240]+bestaudio/'
-                '18[filesize<?48M]/'
+                'bestvideo[ext=mp4][height<=1080]+bestaudio[ext=m4a]/'
+                'bestvideo[height<=1080]+bestaudio/'
+                'bestvideo[height<=720]+bestaudio/'
+                'bestvideo[height<=480]+bestaudio/'
                 'bestvideo[height<=360]+bestaudio/'
-                'bestvideo[height<=240]+bestaudio/'
                 '18/best'
             )
             strategies = [
@@ -597,6 +602,18 @@ def _sync_download_video(url: str, output_template: str) -> Dict[str, Any]:
                     'name': 'yt_authenticated_cookies',
                     'format': yt_format,
                     'no_cookies': False,
+                    'use_proxy': False,
+                },
+                {
+                    'name': 'yt_proxy_rotating_cloud',
+                    'format': yt_format,
+                    'extractor_args': {
+                        'youtube': {
+                            'player_client': ['tv_samsung', 'visionos'],
+                        }
+                    },
+                    'no_cookies': True,
+                    'use_proxy': True,
                 },
                 {
                     'name': 'yt_tv_visionos_cloud',
@@ -607,27 +624,30 @@ def _sync_download_video(url: str, output_template: str) -> Dict[str, Any]:
                         }
                     },
                     'no_cookies': True,
+                    'use_proxy': False,
                 },
                 {
                     'name': 'yt_android_direct',
-                    'format': '18[filesize<?48M]/best[filesize<?48M]/18/best',
+                    'format': '18/best',
                     'extractor_args': {
                         'youtube': {
                             'player_client': ['android'],
                         }
                     },
                     'no_cookies': True,
+                    'use_proxy': False,
                 }
             ]
         else:
             strategies = [
                 {
                     'name': 'general_social',
-                    'format': 'bestvideo[filesize<48M][ext=mp4]+bestaudio[ext=m4a]/best[filesize<48M][ext=mp4]/best[filesize<48M]/bestvideo[filesize_approx<48M]+bestaudio/18/best',
+                    'format': 'bestvideo[filesize<2000M][ext=mp4]+bestaudio[ext=m4a]/best[filesize<2000M][ext=mp4]/best[filesize<2000M]/bestvideo+bestaudio/18/best',
                     'extractor_args': {
                         'instagram': {'api_host': 'i.instagram.com'},
                     },
                     'no_cookies': False,
+                    'use_proxy': False,
                 }
             ]
 
@@ -639,8 +659,14 @@ def _sync_download_video(url: str, output_template: str) -> Dict[str, Any]:
             if 'extractor_args' in strat:
                 strat_opts['extractor_args'] = strat['extractor_args']
 
+            proxy_url = None
+            if strat.get('use_proxy') or (is_yt and proxy_manager.get_static_proxy()):
+                proxy_url = proxy_manager.get_working_proxy()
+                if proxy_url:
+                    strat_opts['proxy'] = proxy_url
+
             try:
-                log_download_event("strategy_attempt_start", url, strategy=strat['name'])
+                log_download_event("strategy_attempt_start", url, strategy=strat['name'], proxy=bool(proxy_url))
                 with yt_dlp.YoutubeDL(strat_opts) as ydl:
                     info = ydl.extract_info(url, download=True)
                     if info:
@@ -651,7 +677,7 @@ def _sync_download_video(url: str, output_template: str) -> Dict[str, Any]:
                                 cleanup_file(final_path)
                                 return {
                                     'success': False,
-                                    'error': f"Media hajmi Telegram limitidan ({filesize // (1024*1024)}MB > 50MB) katta.",
+                                    'error': f"Media hajmi Telegram limitidan ({filesize // (1024*1024)}MB > 2000MB) katta.",
                                     'error_kind': DownloadErrorKind.FILE_TOO_LARGE.value
                                 }
 
@@ -669,6 +695,8 @@ def _sync_download_video(url: str, output_template: str) -> Dict[str, Any]:
                                 'filesize': filesize
                             }
             except Exception as e:
+                if proxy_url:
+                    proxy_manager.report_proxy_failure(proxy_url)
                 last_err = e
                 log_download_error("strategy_failed", url, e, strategy=strat['name'])
                 cleanup_template_artifacts(output_template)
@@ -737,17 +765,25 @@ def _sync_download_audio(url: str, output_template: str) -> Dict[str, Any]:
 
         if is_yt:
             yt_audio_format = (
-                'bestaudio[filesize<?48M]/'
-                'bestaudio[ext=m4a][filesize<?48M]/'
-                'bestaudio[ext=webm][filesize<?48M]/'
-                '140/139/251/250/18[filesize<?48M]/'
-                'bestaudio/18/best'
+                'bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio/140/139/251/250/18/best'
             )
             audio_strategies = [
                 {
                     'name': 'yt_audio_authenticated_cookies',
                     'format': yt_audio_format,
                     'no_cookies': False,
+                    'use_proxy': False,
+                },
+                {
+                    'name': 'yt_audio_proxy_rotating',
+                    'format': yt_audio_format,
+                    'extractor_args': {
+                        'youtube': {
+                            'player_client': ['tv_samsung', 'visionos'],
+                        }
+                    },
+                    'no_cookies': True,
+                    'use_proxy': True,
                 },
                 {
                     'name': 'yt_audio_tv_visionos',
@@ -758,16 +794,18 @@ def _sync_download_audio(url: str, output_template: str) -> Dict[str, Any]:
                         }
                     },
                     'no_cookies': True,
+                    'use_proxy': False,
                 },
                 {
                     'name': 'yt_audio_android_direct',
-                    'format': '140/139/18[filesize<?48M]/bestaudio[filesize<?48M]/best[filesize<?48M]/18/best',
+                    'format': '140/139/18/bestaudio/best',
                     'extractor_args': {
                         'youtube': {
                             'player_client': ['android'],
                         }
                     },
                     'no_cookies': True,
+                    'use_proxy': False,
                 }
             ]
         else:
@@ -777,6 +815,7 @@ def _sync_download_audio(url: str, output_template: str) -> Dict[str, Any]:
                     'format': 'bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio/best[height<=480]/18/best',
                     'extractor_args': {},
                     'no_cookies': False,
+                    'use_proxy': False,
                 }
             ]
 
@@ -788,8 +827,14 @@ def _sync_download_audio(url: str, output_template: str) -> Dict[str, Any]:
             if strat.get('extractor_args'):
                 strat_opts['extractor_args'] = strat['extractor_args']
 
+            proxy_url = None
+            if strat.get('use_proxy') or (is_yt and proxy_manager.get_static_proxy()):
+                proxy_url = proxy_manager.get_working_proxy()
+                if proxy_url:
+                    strat_opts['proxy'] = proxy_url
+
             try:
-                log_download_event("audio_strategy_attempt", url, strategy=strat['name'])
+                log_download_event("audio_strategy_attempt", url, strategy=strat['name'], proxy=bool(proxy_url))
                 with yt_dlp.YoutubeDL(strat_opts) as ydl:
                     info = ydl.extract_info(url, download=True)
                     if info:
@@ -826,6 +871,8 @@ def _sync_download_audio(url: str, output_template: str) -> Dict[str, Any]:
                                 'filesize': filesize
                             }
             except Exception as e:
+                if proxy_url:
+                    proxy_manager.report_proxy_failure(proxy_url)
                 primary_err = e
                 log_download_error("audio_strategy_failed", url, e, strategy=strat['name'])
                 cleanup_template_artifacts(output_template)
