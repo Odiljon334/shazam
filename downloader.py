@@ -569,42 +569,50 @@ def _sync_download_youtube_cdn(url: str, output_template: str, is_audio: bool = 
     """
     YouTube Direct CDN Multiplexer (Ultra-Fast 2-Step Engine):
     1. Yengil metadata extraction: ydl.extract_info(url, download=False)
-       (Faqat ~50KB JSON yuklanadi, proxy yoki direct orqali 1-3 soniyada olinadi).
+       (Faqat ~50KB JSON yuklanadi, cookies/proxy yoki direct orqali 1-3 soniyada olinadi).
     2. Direct CDN Stream: ffmpeg orqali googlevideo.com serverlaridan to'g'ridan-to'g'ri proksisiz,
        Render'ning gigabit tarmog'i orqali oqimlab (.mp4 yoki .mp3) yig'iladi.
     """
     try:
         extract_attempts = [
-            {"use_proxy": True, "clients": ["tv_samsung", "visionos"]},
-            {"use_proxy": False, "clients": ["tv_samsung", "visionos"]},
-            {"use_proxy": True, "clients": ["android"]},
-            {"use_proxy": False, "clients": ["android"]},
+            {"use_cookies": True, "use_proxy": False, "clients": None},
+            {"use_cookies": True, "use_proxy": True, "clients": None},
+            {"use_cookies": False, "use_proxy": True, "clients": ["tv_samsung", "visionos"]},
+            {"use_cookies": False, "use_proxy": False, "clients": ["tv_samsung", "visionos"]},
+            {"use_cookies": False, "use_proxy": True, "clients": ["android"]},
+            {"use_cookies": False, "use_proxy": False, "clients": ["android"]},
         ]
 
         info = None
-        base_opts = _get_ytdl_common_opts()
-        for attempt in extract_attempts:
-            e_opts = dict(base_opts)
-            e_opts['socket_timeout'] = 6
-            e_opts['retries'] = 1
-            e_opts['extractor_args'] = {'youtube': {'player_client': attempt["clients"]}}
-            e_opts['noplaylist'] = True
+        with config.cookie_file_context() as cookie_path:
+            base_opts = _get_ytdl_common_opts(cookie_path=cookie_path)
+            for attempt in extract_attempts:
+                e_opts = dict(base_opts)
+                e_opts['socket_timeout'] = 8
+                e_opts['retries'] = 1
+                e_opts['noplaylist'] = True
+                if not attempt.get("use_cookies"):
+                    e_opts.pop('cookiefile', None)
+                if attempt.get("clients"):
+                    e_opts['extractor_args'] = {'youtube': {'player_client': attempt["clients"]}}
+                else:
+                    e_opts.pop('extractor_args', None)
 
-            p = proxy_manager.get_working_proxy() if attempt["use_proxy"] else None
-            if p:
-                e_opts['proxy'] = p
-            else:
-                e_opts.pop('proxy', None)
-
-            try:
-                with yt_dlp.YoutubeDL(e_opts) as ydl:
-                    info = ydl.extract_info(url, download=False)
-                    if info and info.get("formats"):
-                        break
-            except Exception:
+                p = proxy_manager.get_working_proxy() if attempt["use_proxy"] else None
                 if p:
-                    proxy_manager.report_proxy_failure(p)
-                continue
+                    e_opts['proxy'] = p
+                else:
+                    e_opts.pop('proxy', None)
+
+                try:
+                    with yt_dlp.YoutubeDL(e_opts) as ydl:
+                        info = ydl.extract_info(url, download=False)
+                        if info and info.get("formats"):
+                            break
+                except Exception:
+                    if p:
+                        proxy_manager.report_proxy_failure(p)
+                    continue
 
         if not info or not info.get("formats"):
             return None
@@ -756,6 +764,18 @@ def _sync_download_video(url: str, output_template: str) -> Dict[str, Any]:
             )
             strategies = [
                 {
+                    'name': 'yt_authenticated_cookies',
+                    'format': yt_format,
+                    'no_cookies': False,
+                    'use_proxy': False,
+                },
+                {
+                    'name': 'yt_authenticated_cookies_proxy',
+                    'format': yt_format,
+                    'no_cookies': False,
+                    'use_proxy': True,
+                },
+                {
                     'name': 'yt_proxy_rotating_cloud',
                     'format': yt_format,
                     'extractor_args': {
@@ -775,12 +795,6 @@ def _sync_download_video(url: str, output_template: str) -> Dict[str, Any]:
                         }
                     },
                     'no_cookies': True,
-                    'use_proxy': False,
-                },
-                {
-                    'name': 'yt_authenticated_cookies',
-                    'format': yt_format,
-                    'no_cookies': False,
                     'use_proxy': False,
                 },
                 {
@@ -931,6 +945,18 @@ def _sync_download_audio(url: str, output_template: str) -> Dict[str, Any]:
             )
             audio_strategies = [
                 {
+                    'name': 'yt_audio_authenticated_cookies',
+                    'format': yt_audio_format,
+                    'no_cookies': False,
+                    'use_proxy': False,
+                },
+                {
+                    'name': 'yt_audio_authenticated_cookies_proxy',
+                    'format': yt_audio_format,
+                    'no_cookies': False,
+                    'use_proxy': True,
+                },
+                {
                     'name': 'yt_audio_proxy_rotating',
                     'format': yt_audio_format,
                     'extractor_args': {
@@ -950,12 +976,6 @@ def _sync_download_audio(url: str, output_template: str) -> Dict[str, Any]:
                         }
                     },
                     'no_cookies': True,
-                    'use_proxy': False,
-                },
-                {
-                    'name': 'yt_audio_authenticated_cookies',
-                    'format': yt_audio_format,
-                    'no_cookies': False,
                     'use_proxy': False,
                 },
                 {

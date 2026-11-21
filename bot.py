@@ -1081,42 +1081,45 @@ async def test_yt_extract_handler(request):
     url = request.query.get("url", "https://www.youtube.com/watch?v=jNQXAC9IVRw")
     proxy = request.query.get("proxy")
     use_pool = request.query.get("pool") == "1"
-    client = request.query.get("client", "tv_samsung")
+    client = request.query.get("client")
+    use_cookie = request.query.get("cookie", "1") == "1"
     import yt_dlp, time
     t0 = time.time()
 
-    opts = {
-        'quiet': True,
-        'no_warnings': True,
-        'socket_timeout': 6,
-        'retries': 1,
-        'extractor_args': {'youtube': {'player_client': [client, 'visionos']}},
-        'noplaylist': True,
-    }
-    if proxy:
-        opts['proxy'] = proxy
-    elif use_pool:
-        opts['proxy'] = proxy_manager.get_working_proxy()
+    with config.cookie_file_context() as cookie_path:
+        opts = downloader._get_ytdl_common_opts(cookie_path=cookie_path if use_cookie else None)
+        opts['socket_timeout'] = 8
+        opts['retries'] = 1
+        opts['noplaylist'] = True
+        if client:
+            opts['extractor_args'] = {'youtube': {'player_client': [client, 'visionos']}}
+        elif not cookie_path or not use_cookie:
+            opts['extractor_args'] = {'youtube': {'player_client': ['tv_samsung', 'visionos']}}
 
-    try:
-        with yt_dlp.YoutubeDL(opts) as ydl:
-            info = ydl.extract_info(url, download=False)
+        if proxy:
+            opts['proxy'] = proxy
+        elif use_pool:
+            opts['proxy'] = proxy_manager.get_working_proxy()
+
+        try:
+            with yt_dlp.YoutubeDL(opts) as ydl:
+                info = ydl.extract_info(url, download=False)
+                return web.json_response({
+                    "status": "success",
+                    "duration_seconds": round(time.time() - t0, 2),
+                    "title": info.get("title"),
+                    "proxy_used": opts.get("proxy"),
+                    "cookies_used": bool(cookie_path if use_cookie else None),
+                    "formats_count": len(info.get("formats", []))
+                })
+        except Exception as e:
             return web.json_response({
-                "status": "success",
+                "status": "error",
                 "duration_seconds": round(time.time() - t0, 2),
-                "title": info.get("title"),
                 "proxy_used": opts.get("proxy"),
-                "client": client,
-                "formats_count": len(info.get("formats", []))
+                "cookies_used": bool(cookie_path if use_cookie else None),
+                "error": str(e)
             })
-    except Exception as e:
-        return web.json_response({
-            "status": "error",
-            "duration_seconds": round(time.time() - t0, 2),
-            "proxy_used": opts.get("proxy"),
-            "client": client,
-            "error": str(e)
-        })
 
 
 def main():
