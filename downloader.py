@@ -575,16 +575,18 @@ def _sync_download_youtube_cdn(url: str, output_template: str, is_audio: bool = 
     """
     try:
         extract_attempts = [
-            {"use_proxy": False, "clients": ["tv_samsung", "visionos"]},
             {"use_proxy": True, "clients": ["tv_samsung", "visionos"]},
-            {"use_proxy": False, "clients": ["android"]},
+            {"use_proxy": False, "clients": ["tv_samsung", "visionos"]},
             {"use_proxy": True, "clients": ["android"]},
+            {"use_proxy": False, "clients": ["android"]},
         ]
 
         info = None
         base_opts = _get_ytdl_common_opts()
         for attempt in extract_attempts:
             e_opts = dict(base_opts)
+            e_opts['socket_timeout'] = 6
+            e_opts['retries'] = 1
             e_opts['extractor_args'] = {'youtube': {'player_client': attempt["clients"]}}
             e_opts['noplaylist'] = True
 

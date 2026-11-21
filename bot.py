@@ -1056,11 +1056,63 @@ async def on_app_cleanup(app):
         await bot.session.close()
 
 
+async def proxy_diag_handler(request):
+    return web.json_response({
+        "verified_count": proxy_manager.get_verified_count(),
+        "static_proxy": proxy_manager.get_static_proxy(),
+        "pool": list(proxy_manager._verified_proxies)[:10],
+    })
+
+
+async def test_yt_extract_handler(request):
+    url = request.query.get("url", "https://www.youtube.com/watch?v=jNQXAC9IVRw")
+    proxy = request.query.get("proxy")
+    use_pool = request.query.get("pool") == "1"
+    client = request.query.get("client", "tv_samsung")
+    import yt_dlp, time
+    t0 = time.time()
+
+    opts = {
+        'quiet': True,
+        'no_warnings': True,
+        'socket_timeout': 6,
+        'retries': 1,
+        'extractor_args': {'youtube': {'player_client': [client, 'visionos']}},
+        'noplaylist': True,
+    }
+    if proxy:
+        opts['proxy'] = proxy
+    elif use_pool:
+        opts['proxy'] = proxy_manager.get_working_proxy()
+
+    try:
+        with yt_dlp.YoutubeDL(opts) as ydl:
+            info = ydl.extract_info(url, download=False)
+            return web.json_response({
+                "status": "success",
+                "duration_seconds": round(time.time() - t0, 2),
+                "title": info.get("title"),
+                "proxy_used": opts.get("proxy"),
+                "client": client,
+                "formats_count": len(info.get("formats", []))
+            })
+    except Exception as e:
+        return web.json_response({
+            "status": "error",
+            "duration_seconds": round(time.time() - t0, 2),
+            "proxy_used": opts.get("proxy"),
+            "client": client,
+            "error": str(e)
+        })
+
+
 def main():
     port = int(os.environ.get("PORT", 8080))
     app = web.Application()
     app.router.add_get("/", health_check_handler)
     app.router.add_get("/health", health_check_handler)
+    app.router.add_get("/proxy-diag", proxy_diag_handler)
+    app.router.add_get("/test-yt-extract", test_yt_extract_handler)
     app.router.add_get("/test-yt", test_yt_handler)
     app.on_startup.append(on_app_startup)
     app.on_cleanup.append(on_app_cleanup)
