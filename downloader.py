@@ -565,19 +565,173 @@ def _resolve_downloaded_file(ydl: yt_dlp.YoutubeDL, info: dict, output_template:
                     return candidate
     return None
 
+def _sync_download_youtube_cdn(url: str, output_template: str, is_audio: bool = False) -> Optional[Dict[str, Any]]:
+    """
+    YouTube Direct CDN Multiplexer (Ultra-Fast 2-Step Engine):
+    1. Yengil metadata extraction: ydl.extract_info(url, download=False)
+       (Faqat ~50KB JSON yuklanadi, proxy yoki direct orqali 1-3 soniyada olinadi).
+    2. Direct CDN Stream: ffmpeg orqali googlevideo.com serverlaridan to'g'ridan-to'g'ri proksisiz,
+       Render'ning gigabit tarmog'i orqali oqimlab (.mp4 yoki .mp3) yig'iladi.
+    """
+    try:
+        extract_attempts = [
+            {"use_proxy": False, "clients": ["tv_samsung", "visionos"]},
+            {"use_proxy": True, "clients": ["tv_samsung", "visionos"]},
+            {"use_proxy": False, "clients": ["android"]},
+            {"use_proxy": True, "clients": ["android"]},
+        ]
+
+        info = None
+        base_opts = _get_ytdl_common_opts()
+        for attempt in extract_attempts:
+            e_opts = dict(base_opts)
+            e_opts['extractor_args'] = {'youtube': {'player_client': attempt["clients"]}}
+            e_opts['noplaylist'] = True
+
+            p = proxy_manager.get_working_proxy() if attempt["use_proxy"] else None
+            if p:
+                e_opts['proxy'] = p
+            else:
+                e_opts.pop('proxy', None)
+
+            try:
+                with yt_dlp.YoutubeDL(e_opts) as ydl:
+                    info = ydl.extract_info(url, download=False)
+                    if info and info.get("formats"):
+                        break
+            except Exception:
+                if p:
+                    proxy_manager.report_proxy_failure(p)
+                continue
+
+        if not info or not info.get("formats"):
+            return None
+
+        title = info.get("title") or "YouTube Media"
+        uploader = info.get("uploader") or info.get("channel") or "YouTube"
+        duration = info.get("duration") or 0
+
+        if is_audio:
+            final_path = output_template.replace(".%(ext)s", ".mp3") if ".%(ext)s" in output_template else output_template
+            if not final_path.endswith(".mp3"):
+                base, _ = os.path.splitext(final_path)
+                final_path = f"{base}.mp3"
+
+            a_fmts = [f for f in info.get("formats", []) if f.get("acodec") != "none" and f.get("url")]
+            if not a_fmts:
+                return None
+            best_a = sorted(a_fmts, key=lambda x: x.get("abr") or 0, reverse=True)[0]
+
+            cmd = [
+                "ffmpeg", "-y",
+                "-i", best_a["url"],
+                "-vn",
+                "-c:a", "libmp3lame",
+                "-q:a", "2",
+                final_path
+            ]
+            p = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=120)
+            if p.returncode == 0 and os.path.exists(final_path):
+                sz = os.path.getsize(final_path)
+                if sz > MAX_TELEGRAM_SIZE:
+                    cleanup_file(final_path)
+                    return {
+                        'success': False,
+                        'error': f"Audio hajmi ({sz // (1024*1024)}MB > 2000MB) Telegram limitidan katta.",
+                        'error_kind': DownloadErrorKind.FILE_TOO_LARGE.value
+                    }
+                log_download_event("youtube_cdn_audio_success", url, filesize=sz, title=title)
+                return {
+                    'success': True,
+                    'file_path': final_path,
+                    'title': title,
+                    'uploader': uploader,
+                    'duration': duration,
+                    'filesize': sz,
+                }
+            return None
+        else:
+            final_path = output_template.replace(".%(ext)s", ".mp4") if ".%(ext)s" in output_template else output_template
+            if not final_path.endswith(".mp4"):
+                base, _ = os.path.splitext(final_path)
+                final_path = f"{base}.mp4"
+
+            pre_muxed = [f for f in info.get("formats", []) if f.get("vcodec") != "none" and f.get("acodec") != "none" and f.get("url") and (f.get("height") or 0) <= 1080]
+            v_fmts = [f for f in info.get("formats", []) if f.get("vcodec") != "none" and f.get("url") and (f.get("height") or 0) <= 1080]
+            a_fmts = [f for f in info.get("formats", []) if f.get("acodec") != "none" and f.get("url")]
+
+            if not v_fmts and not pre_muxed:
+                return None
+
+            if pre_muxed:
+                best_pm = sorted(pre_muxed, key=lambda x: x.get("height") or 0, reverse=True)[0]
+                cmd = ["ffmpeg", "-y", "-i", best_pm["url"], "-c", "copy", "-movflags", "+faststart", final_path]
+                res_w = best_pm.get("width")
+                res_h = best_pm.get("height")
+            else:
+                best_v = sorted(v_fmts, key=lambda x: x.get("height") or 0, reverse=True)[0]
+                best_a = sorted(a_fmts, key=lambda x: x.get("abr") or 0, reverse=True)[0] if a_fmts else None
+                res_w = best_v.get("width")
+                res_h = best_v.get("height")
+
+                if best_a:
+                    v_copy = best_v.get("ext") == "mp4" and best_a.get("ext") == "m4a"
+                    a_codec = "copy" if v_copy else "aac"
+                    cmd = [
+                        "ffmpeg", "-y",
+                        "-i", best_v["url"],
+                        "-i", best_a["url"],
+                        "-c:v", "copy",
+                        "-c:a", a_codec,
+                        "-movflags", "+faststart",
+                        final_path
+                    ]
+                else:
+                    cmd = ["ffmpeg", "-y", "-i", best_v["url"], "-c", "copy", "-movflags", "+faststart", final_path]
+
+            p = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=120)
+            if p.returncode == 0 and os.path.exists(final_path):
+                sz = os.path.getsize(final_path)
+                if sz > MAX_TELEGRAM_SIZE:
+                    cleanup_file(final_path)
+                    return {
+                        'success': False,
+                        'error': f"Media hajmi ({sz // (1024*1024)}MB > 2000MB) Telegram limitidan katta.",
+                        'error_kind': DownloadErrorKind.FILE_TOO_LARGE.value
+                    }
+                log_download_event("youtube_cdn_video_success", url, filesize=sz, title=title)
+                return {
+                    'success': True,
+                    'media_type': 'video',
+                    'file_path': final_path,
+                    'title': title,
+                    'uploader': uploader,
+                    'duration': duration,
+                    'width': res_w,
+                    'height': res_h,
+                    'filesize': sz,
+                }
+            return None
+    except Exception as e:
+        logger.warning(f"YouTube CDN multiplexer xato: {e}")
+        return None
+
 def _sync_download_video(url: str, output_template: str) -> Dict[str, Any]:
     """
     Videoni yuklab oladi.
     Render 512MB RAM cheklovini hisobga olgan holda format tanlaydi.
     YouTube bloklariga qarshi ko'p bosqichli Fallback arxitekturasi:
-      Tier 1: Cloud-optimized iOS/Android player client
-      Tier 2: TV / MWeb player client
-      Tier 3: Standalone format 18 (360p pre-muxed mp4, minimal RAM/CPU)
-      Tier 4: Secondary Provider Hook
-      Tier 5: Universal Social Crawler (Instagram/TikTok/Meta)
+      Tier 0: Direct CDN Multiplexer (Ultra-Fast ffmpeg streaming)
+      Tier 1: Cloud-optimized TV/VisionOS player client
+      Tier 2: Universal Social Crawler (Instagram/TikTok/Meta)
     """
     is_yt = "youtube.com" in url.lower() or "youtu.be" in url.lower()
     last_err: Optional[Exception] = None
+
+    if is_yt:
+        cdn_res = _sync_download_youtube_cdn(url, output_template, is_audio=False)
+        if cdn_res and cdn_res.get("success"):
+            return cdn_res
 
     with config.cookie_file_context() as cookie_path:
         base_opts = _get_ytdl_common_opts(cookie_path=cookie_path)
@@ -745,6 +899,11 @@ def _sync_download_audio(url: str, output_template: str) -> Dict[str, Any]:
     """
     is_yt = "youtube.com" in url.lower() or "youtu.be" in url.lower()
     primary_err: Optional[Exception] = None
+
+    if is_yt:
+        cdn_res = _sync_download_youtube_cdn(url, output_template, is_audio=True)
+        if cdn_res and cdn_res.get("success"):
+            return cdn_res
 
     dir_name = os.path.dirname(output_template) or "."
     raw_name = os.path.basename(output_template)
